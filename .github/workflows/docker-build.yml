@@ -50,4 +50,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           # Uncomment the line below if your Raspberry Pi is a 32-bit ARM device (arm/v7). 
           # For a Pi 4/5 running 64-bit OS (aarch64), leave it commented out or use linux/amd64,linux/arm64.
-          # platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64,linux/arm64
