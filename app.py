@@ -3,7 +3,7 @@ import subprocess
 import json
 import threading
 from datetime import datetime
-from flask import Flask, render_template_string, jsonify, request
+from flask import Flask, render_template_string, jsonify, request, send_file
 import urllib.request
 
 app = Flask(__name__)
@@ -78,6 +78,14 @@ def run_update_process(stack_id=None):
 def index():
     return render_template_string(HTML_TEMPLATE)
 
+
+@app.route("/favicon.ico")
+def favicon():
+    favicon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "favicon.png")
+    return send_file(favicon_path, mimetype="image/png")
+
+
+
 @app.route("/api/data")
 def api_data():
     status_data = load_status()
@@ -119,6 +127,8 @@ HTML_TEMPLATE = """
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Portainer Stack Manager</title>
+    <link rel="icon" href="/favicon.ico" type="image/png">
+
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 2rem; max-width: 900px; margin: 0 auto; }
         .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); margin-bottom: 1.5rem; }

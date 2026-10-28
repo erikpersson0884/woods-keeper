@@ -11,7 +11,7 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir flask
 
-COPY app.py auto-update.sh /app/
+COPY app.py auto-update.sh favicon.png /app/
 RUN chmod +x /app/auto-update.sh
 
 EXPOSE 5000
