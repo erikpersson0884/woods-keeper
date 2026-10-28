@@ -13,55 +13,65 @@ is_latest() {
   [[ "$name" != *:* || "$name" == *:latest ]]
 }
 
-declare -A PULLED
-declare -A STACKS
+PULLED_IMAGES=""
+STACK_PROJECTS=""
 
 for cid in $(docker ps -q); do
   img=$(docker inspect -f '{{.Config.Image}}' "$cid")
   is_latest "$img" || continue
 
-  if [[ -z "${PULLED[$img]:-}" ]]; then
-    docker pull -q "$img" >/dev/null 2>&1 || { log "pull failed: $img"; PULLED[$img]=fail; continue; }
-    PULLED[$img]=ok
+  # Check if we already pulled this image during this run
+  if [[ "$PULLED_IMAGES" != *"$img"* ]]; then
+    if docker pull -q "$img" >/dev/null 2>&1; then
+      PULLED_IMAGES="$PULLED_IMAGES $img"
+    else
+      log "pull failed: $img"
+      continue
+    fi
   fi
-  [[ "${PULLED[$img]}" == ok ]] || continue
 
   running=$(docker inspect -f '{{.Image}}' "$cid")
   newest=$(docker image inspect -f '{{.Id}}' "$img")
   [[ "$running" == "$newest" ]] && continue
 
-  project=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$cid")
-  if [[ -z "$project" ]]; then
+  project=$(docker inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$cid" 2>/dev/null || echo "")
+  if [[ -z "$project" || "$project" == "<no value>" ]]; then
     log "$img has an update but container $cid isn't part of a stack, skipping"
     continue
   fi
-  log "update found: $img (stack: $project)"
-  STACKS[$project]=1
+
+  # Add to our list of stacks if not already listed
+  if [[ "$STACK_PROJECTS" != *"$project"* ]]; then
+    log "update found: $img (stack: $project)"
+    STACK_PROJECTS="$STACK_PROJECTS $project"
+  fi
 done
 
-# Redeploy each affected stack once
-if [ ${#STACKS[@]} -gt 0 ]; then
-  for project in "${!STACKS[@]}"; do
-    read -r id ep < <(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks" \
-      | jq -r --arg n "$project" '.[] | select(.Name | ascii_downcase == $n) | "\(.Id) \(.EndpointId)"')
-    if [[ -z "${id:-}" ]]; then
-      log "stack $project not found in Portainer, skipping"
-      continue
-    fi
-    log "redeploying $project (stack $id, endpoint $ep)"
-    
-    # Perform update-stack logic directly
-    STACK=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id")
-    FILE=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id/file" | jq -r '.StackFileContent')
-    ENV=$(echo "$STACK" | jq '.Env // []')
-
-    jq -n --arg f "$FILE" --argjson env "$ENV" \
-      '{stackFileContent: $f, env: $env, prune: false, pullImage: true}' \
-    | curl -s -X PUT "$PORTAINER_URL/api/stacks/$id?endpointId=$ep" \
-      -H "X-API-Key: $API_KEY" \
-      -H "Content-Type: application/json" \
-      -d @- | jq '{Id, Name, Status}'
-  done
-else
+if [[ -z "${STACK_PROJECTS// }" ]]; then
   log "No stack-managed container updates found."
+  exit 0
 fi
+
+# Redeploy each affected stack
+for project in $STACK_PROJECTS; do
+  read -r id ep < <(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks" \
+    | jq -r --arg n "$project" '.[] | select(.Name | ascii_downcase == $n) | "\(.Id) \(.EndpointId)"')
+  
+  if [[ -z "${id:-}" || "$id" == "null" ]]; then
+    log "stack $project not found in Portainer, skipping"
+    continue
+  fi
+  
+  log "redeploying $project (stack $id, endpoint $ep)"
+  
+  STACK=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id")
+  FILE=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id/file" | jq -r '.StackFileContent')
+  ENV=$(echo "$STACK" | jq '.Env // []')
+
+  jq -n --arg f "$FILE" --argjson env "$ENV" \
+    '{stackFileContent: $f, env: $env, prune: false, pullImage: true}' \
+  | curl -s -X PUT "$PORTAINER_URL/api/stacks/$id?endpointId=$ep" \
+    -H "X-API-Key: $API_KEY" \
+    -H "Content-Type: application/json" \
+    -d @- | jq '{Id, Name, Status}'
+done
