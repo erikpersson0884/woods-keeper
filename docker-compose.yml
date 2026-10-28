@@ -1,0 +1,20 @@
+version: '3.8'
+
+services:
+  portainer-updater:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: portainer-updater
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - PORTAINER_URL=http://your-portainer-ip:9000   # Change to your Portainer URL
+      - API_KEY=ptr_your_portainer_api_key_here         # Your Portainer API Key
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock       # Needed to inspect/pull docker images
+      - updater_data:/app/data
+
+volumes:
+  updater_data:
