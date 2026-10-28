@@ -39,29 +39,29 @@ for cid in $(docker ps -q); do
   STACKS[$project]=1
 done
 
-if [ ${#STACKS[@]} -eq 0 ]; then
-  log "All stacks are up to date."
-  exit 0
+# Redeploy each affected stack once
+if [ ${#STACKS[@]} -gt 0 ]; then
+  for project in "${!STACKS[@]}"; do
+    read -r id ep < <(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks" \
+      | jq -r --arg n "$project" '.[] | select(.Name | ascii_downcase == $n) | "\(.Id) \(.EndpointId)"')
+    if [[ -z "${id:-}" ]]; then
+      log "stack $project not found in Portainer, skipping"
+      continue
+    fi
+    log "redeploying $project (stack $id, endpoint $ep)"
+    
+    # Perform update-stack logic directly
+    STACK=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id")
+    FILE=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id/file" | jq -r '.StackFileContent')
+    ENV=$(echo "$STACK" | jq '.Env // []')
+
+    jq -n --arg f "$FILE" --argjson env "$ENV" \
+      '{stackFileContent: $f, env: $env, prune: false, pullImage: true}' \
+    | curl -s -X PUT "$PORTAINER_URL/api/stacks/$id?endpointId=$ep" \
+      -H "X-API-Key: $API_KEY" \
+      -H "Content-Type: application/json" \
+      -d @- | jq '{Id, Name, Status}'
+  done
+else
+  log "No stack-managed container updates found."
 fi
-
-for project in "${!STACKS[@]}"; do
-  read -r id ep < <(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks" \
-    | jq -r --arg n "$project" '.[] | select(.Name | ascii_downcase == $n) | "\(.Id) \(.EndpointId)"')
-  if [[ -z "${id:-}" ]]; then
-    log "stack $project not found in Portainer, skipping"
-    continue
-  fi
-  log "redeploying $project (stack $id, endpoint $ep)"
-  
-  # Perform update-stack logic directly
-  STACK=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id")
-  FILE=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id/file" | jq -r '.StackFileContent')
-  ENV=$(echo "$STACK" | jq '.Env // []')
-
-  jq -n --arg f "$FILE" --argjson env "$ENV" \
-    '{stackFileContent: $f, env: $env, prune: false, pullImage: true}' \
-  | curl -s -X PUT "$PORTAINER_URL/api/stacks/$id?endpointId=$ep" \
-    -H "X-API-Key: $API_KEY" \
-    -H "Content-Type: application/json" \
-    -d @- | jq '{Id, Name, Status}'
-done
