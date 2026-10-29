@@ -138,10 +138,12 @@ persistent `data` volume and is disabled by default.
 ## 🔌 API Endpoints
 
 ### 1. `GET /`
-Renders the primary web dashboard.
+Renders the sign-in page for unauthenticated users and the primary web
+dashboard after successful authentication.
 
 ### 2. `GET /api/data`
-Returns JSON formatted status data, current execution logs, and an array of all active Portainer stacks.
+Returns JSON formatted status data, current execution logs, and an array of
+all active Portainer stacks. Requires dashboard authentication.
 
 **Response Example:**
 ```json

@@ -9,7 +9,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 from functools import wraps
 from urllib.parse import urlparse
-from flask import Flask, render_template_string, jsonify, request, send_file
+from flask import Flask, render_template_string, jsonify, request, send_file, session, redirect, url_for
 import urllib.request
 import urllib.error
 
@@ -23,6 +23,7 @@ PORTAINER_URL = os.environ.get("PORTAINER_URL", "https://localhost:9000")
 API_KEY = os.environ.get("API_KEY", "")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+app.secret_key = os.environ.get("SECRET_KEY") or secrets.token_hex(32)
 ALLOW_INSECURE_PORTAINER_HTTP = (
     os.environ.get("ALLOW_INSECURE_PORTAINER_HTTP", "").lower() == "true"
 )
@@ -44,6 +45,8 @@ def validate_portainer_url():
 def requires_admin_auth(view):
     @wraps(view)
     def authenticated_view(*args, **kwargs):
+        if session.get("authenticated") is True:
+            return view(*args, **kwargs)
         authorization = request.headers.get("Authorization", "")
         if not authorization.startswith("Basic "):
             return _authentication_required_response()
@@ -73,6 +76,26 @@ def _authentication_required_response():
     response.status_code = 401
     response.headers["WWW-Authenticate"] = 'Basic realm="Woods Keeper"'
     return response
+
+
+def is_authenticated():
+    if session.get("authenticated") is True:
+        return True
+
+    authorization = request.headers.get("Authorization", "")
+    if not authorization.startswith("Basic "):
+        return False
+    try:
+        decoded_credentials = base64.b64decode(
+            authorization[6:].strip(), validate=True
+        ).decode("utf-8")
+        username, password = decoded_credentials.split(":", 1)
+    except (ValueError, UnicodeDecodeError, binascii.Error):
+        return False
+    return (
+        secrets.compare_digest(username, ADMIN_USERNAME)
+        and secrets.compare_digest(password, ADMIN_PASSWORD)
+    )
 
 def load_status():
     if os.path.exists(STATUS_FILE):
@@ -201,10 +224,13 @@ def run_update_process(stack_id=None):
 
 @app.route("/")
 def index():
+    if not is_authenticated():
+        return render_template_string(LOGIN_TEMPLATE)
     return render_template_string(HTML_TEMPLATE)
 
 
 @app.route("/favicon.ico")
+@requires_admin_auth
 def favicon():
     favicon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "favicon.png")
     return send_file(favicon_path, mimetype="image/png")
@@ -212,6 +238,7 @@ def favicon():
 
 
 @app.route("/api/data")
+@requires_admin_auth
 def api_data():
     status_data = load_status()
     with schedule_lock:
@@ -294,6 +321,62 @@ def update_stack_settings():
         save_schedule(schedule)
     return jsonify({"stack_id": stack_id, "excluded": excluded})
 
+
+@app.route("/login", methods=["POST"])
+def login():
+    username = request.form.get("username", "")
+    password = request.form.get("password", "")
+    if (
+        secrets.compare_digest(username, ADMIN_USERNAME)
+        and secrets.compare_digest(password, ADMIN_PASSWORD)
+    ):
+        session["authenticated"] = True
+        return redirect(url_for("index"))
+    return render_template_string(LOGIN_TEMPLATE, error="Invalid username or password."), 401
+
+
+@app.route("/logout", methods=["POST"])
+@requires_admin_auth
+def logout():
+    session.clear()
+    return redirect(url_for("index"))
+
+
+LOGIN_TEMPLATE = """
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Sign in - Stack Manager</title>
+    <style>
+        :root { color-scheme: light; --bg:#eef1f6; --panel:#fff; --line:#dde2ec; --ink:#18202f; --muted:#617088; --accent:#2a6df4; --error:#b4443c; }
+        * { box-sizing:border-box; }
+        body { margin:0; min-height:100vh; display:grid; place-items:center; padding:18px; background:var(--bg); color:var(--ink); font:15px/1.5 system-ui,sans-serif; }
+        .login { width:min(100%, 390px); padding:28px; background:var(--panel); border:1px solid var(--line); border-radius:14px; }
+        h1 { margin:0 0 6px; font-size:24px; }
+        p { margin:0 0 22px; color:var(--muted); }
+        label { display:grid; gap:6px; margin-top:14px; font-weight:600; }
+        input { width:100%; padding:10px 12px; border:1px solid var(--line); border-radius:8px; font:inherit; }
+        button { width:100%; margin-top:22px; padding:11px 16px; border:0; border-radius:9px; background:var(--accent); color:#fff; font:600 15px system-ui,sans-serif; cursor:pointer; }
+        .error { margin:0 0 12px; color:var(--error); }
+    </style>
+</head>
+<body>
+    <main class="login">
+        <h1>Stack Manager</h1>
+        <p>Sign in to manage your Portainer stacks.</p>
+        {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
+        <form method="post" action="/login">
+            <label>Username<input name="username" autocomplete="username" required autofocus></label>
+            <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
+            <button type="submit">Sign in</button>
+        </form>
+    </main>
+</body>
+</html>
+"""
+
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
@@ -318,6 +401,9 @@ HTML_TEMPLATE = """
         .top { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
         .theme-toggle { border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:8px; padding:7px 12px; font-weight:500; }
         .theme-toggle:hover { border-color:var(--accent); color:var(--accent); }
+        .header-actions { display:flex; gap:8px; align-items:center; }
+        .logout { border:1px solid var(--line); background:var(--panel); color:var(--muted); border-radius:8px; padding:7px 12px; font:inherit; cursor:pointer; }
+        .logout:hover { border-color:var(--accent); color:var(--accent); }
         .conn { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); margin-top:6px; }
         .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; }
         .dot.off { background:var(--off); }
@@ -370,7 +456,10 @@ HTML_TEMPLATE = """
             <h1>Stack Manager</h1>
             <div class="conn"><span id="connection-dot" class="dot"></span><span id="portainer-status">Connecting to Portainer...</span></div>
         </div>
-        <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()">Dark mode</button>
+        <div class="header-actions">
+            <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()">Dark mode</button>
+            <form method="post" action="/logout"><button class="logout" type="submit">Sign out</button></form>
+        </div>
     </header>
 
     <section class="panel run" aria-label="Global update">
