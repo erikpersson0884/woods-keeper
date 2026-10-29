@@ -201,7 +201,6 @@ def index():
 
 
 @app.route("/favicon.ico")
-@requires_admin_auth
 def favicon():
     favicon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "favicon.png")
     return send_file(favicon_path, mimetype="image/png")
