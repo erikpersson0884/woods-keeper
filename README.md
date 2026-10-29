@@ -129,8 +129,9 @@ Configure these GitHub repository secrets before enabling the workflow:
 | `SONAR_HOST_URL` | Base URL of the SonarQube server, for example `https://sonarqube.example.com` |
 | `SONAR_TOKEN` | SonarQube user or project analysis token |
 
-The workflow creates the SonarQube project key from the repository owner and
-name, for example `coolguy_woods-keeper`.
+The project key is configured in `sonar-project.properties` as
+`woods-keeper`. Create a project with that exact key in SonarQube, or update
+that file and the workflow together if you use a different key.
 
 The dashboard header includes a schedule control for global update checks. Choose
 15 minutes, 1 hour, 6 hours, or once a day. The setting is stored in the

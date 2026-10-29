@@ -28,8 +28,6 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.projectKey=${{ github.repository_owner }}_${{ github.event.repository.name }}
-            -Dsonar.projectName=${{ github.event.repository.name }}
             -Dsonar.sources=app.py,auto-update.sh
             -Dsonar.python.version=3.11
             -Dsonar.exclusions=**/__pycache__/**,data/**,docs/**,favicon.png
