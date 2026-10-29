@@ -299,207 +299,227 @@ HTML_TEMPLATE = """
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Portainer Stack Manager</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Stack Manager</title>
     <link rel="icon" href="/favicon.ico" type="image/png">
-
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f172a; color: #f8fafc; padding: 2rem; max-width: 900px; margin: 0 auto; }
-        .card { background: #1e293b; border-radius: 12px; padding: 1.5rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.3); margin-bottom: 1.5rem; }
-        h1, h2 { margin-top: 0; color: #38bdf8; }
-        table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #334155; }
-        th { color: #94a3b8; font-size: 0.85rem; text-transform: uppercase; }
-        button { background: #0284c7; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: 600; cursor: pointer; transition: background 0.2s; }
-        button:hover { background: #0369a1; }
-        button:disabled { background: #475569; cursor: not-allowed; }
-        .btn-global { width: 100%; padding: 12px; font-size: 1rem; margin-top: 1rem; background: #059669; }
-        .btn-global:hover { background: #047857; }
-        .logs { background: #090d16; border-radius: 8px; padding: 1rem; margin-top: 1rem; font-family: monospace; font-size: 0.85rem; max-height: 200px; overflow-y: auto; color: #cbd5e1; }
-        .badge { display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 0.8rem; }
-        .badge.Idle { background: #334155; color: #94a3b8; }
-        .badge.Success { background: #166534; color: #4ade80; }
-        .badge.Failed { background: #991b1b; color: #fca5a5; }
-        .badge.Updating\.\.\. { background: #854d0e; color: #fde047; }
-        .stack-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; }
-        .stack-status.running { background: #14532d; color: #86efac; }
-        .stack-status.stopped { background: #450a0a; color: #fca5a5; }
-        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
-        .stack-option { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #cbd5e1; }
-        .schedule { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
-        .schedule select, .schedule button { padding: 8px; border-radius: 6px; border: 1px solid #475569; }
-        .schedule select { background: #0f172a; color: #f8fafc; }
-        .schedule-status { color: #94a3b8; font-size: 0.9rem; }
+        :root { --bg:#eef1f6; --panel:#fff; --line:#dde2ec; --ink:#18202f; --muted:#617088; --accent:#2a6df4; --ok:#16895a; --ok-bg:#e0f4ea; --off:#b4443c; --off-bg:#fbe7e5; --term:#141a26; --term-ink:#c9d3e6; --track:#c8cfdd; color-scheme:light; }
+        :root[data-theme="dark"] { --bg:#0e1420; --panel:#161e2e; --line:#243049; --ink:#e6ecf7; --muted:#8d9bb5; --accent:#5b8dff; --ok:#4cd39b; --ok-bg:#12372b; --off:#f08a80; --off-bg:#3b1b1d; --term:#0a0f19; --term-ink:#c9d3e6; --track:#2c3a57; color-scheme:dark; }
+        * { box-sizing:border-box; }
+        body { margin:0; background:var(--bg); color:var(--ink); font:15px/1.5 "IBM Plex Sans", system-ui, sans-serif; }
+        main { max-width:980px; margin:0 auto; padding:28px 18px 56px; display:grid; gap:18px; }
+        h1 { font-size:26px; font-weight:600; margin:0; letter-spacing:-.01em; }
+        h2 { font-size:17px; font-weight:600; margin:0; }
+        .muted { color:var(--muted); }
+        .panel { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:22px; }
+        button { font:inherit; cursor:pointer; }
+        button:disabled { opacity:.6; cursor:progress; }
+        :focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+        .top { display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap; }
+        .theme-toggle { border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:8px; padding:7px 12px; font-weight:500; }
+        .theme-toggle:hover { border-color:var(--accent); color:var(--accent); }
+        .conn { display:inline-flex; align-items:center; gap:8px; font-size:13px; color:var(--muted); margin-top:6px; }
+        .dot { width:8px; height:8px; border-radius:50%; background:var(--ok); flex:none; }
+        .dot.off { background:var(--off); }
+        .primary { background:var(--accent); color:#fff; border:0; border-radius:10px; padding:11px 20px; font-weight:600; display:inline-flex; gap:8px; align-items:center; }
+        .run { display:grid; grid-template-columns:1fr auto; gap:18px 24px; align-items:center; }
+        .meta { display:flex; gap:28px; flex-wrap:wrap; }
+        .meta div { display:grid; gap:2px; }
+        .meta span:first-child { font-size:13px; color:var(--muted); }
+        .badge { display:inline-block; padding:1px 10px; border-radius:99px; font-size:13px; font-weight:500; background:var(--ok-bg); color:var(--ok); width:fit-content; }
+        .badge.busy { background:var(--track); color:var(--ink); }
+        .sched { grid-column:1/-1; display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding-top:16px; border-top:1px solid var(--line); }
+        select, input[type=search] { font:inherit; color:var(--ink); background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:7px 10px; }
+        select:disabled { opacity:.5; }
+        .switch { position:relative; display:inline-flex; align-items:center; gap:10px; cursor:pointer; user-select:none; }
+        .switch input { position:absolute; opacity:0; width:100%; height:100%; margin:0; cursor:pointer; }
+        .switch i { width:36px; height:20px; border-radius:99px; background:var(--track); position:relative; transition:background .15s; flex:none; }
+        .switch i:after { content:""; position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#fff; transition:transform .15s; }
+        .switch input:checked+i { background:var(--accent); }
+        .switch input:checked+i:after { transform:translateX(16px); }
+        .health { display:flex; height:10px; border-radius:99px; overflow:hidden; background:var(--track); margin:14px 0 8px; }
+        .health b { display:block; transition:width .3s; }
+        .health .r { background:var(--ok); } .health .s { background:var(--off); }
+        .legend { display:flex; gap:20px; font-size:13px; color:var(--muted); flex-wrap:wrap; }
+        .legend span { display:inline-flex; align-items:center; gap:7px; }
+        .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin:18px 0 14px; }
+        .bar input[type=search] { flex:1; min-width:180px; }
+        .chips { display:flex; gap:6px; }
+        .chip { border:1px solid var(--line); background:transparent; color:var(--muted); border-radius:99px; padding:6px 14px; font-size:14px; }
+        .chip[aria-pressed=true] { background:var(--ink); color:var(--panel); border-color:var(--ink); }
+        .grid { display:grid; grid-template-columns:repeat(2,1fr); gap:10px; }
+        .stack-card { display:grid; grid-template-columns:1fr auto; gap:8px 12px; align-items:center; border:1px solid var(--line); border-radius:12px; padding:14px 16px; background:var(--bg); }
+        .stack-card h3 { margin:0; font-size:15px; font-weight:600; display:flex; align-items:center; gap:9px; min-width:0; overflow-wrap:anywhere; }
+        .state { font-size:13px; color:var(--muted); margin-left:17px; }
+        .stack-card.stopped h3 .dot { background:var(--off); }
+        .stack-card .skip { grid-column:1/-1; font-size:13px; color:var(--muted); padding-top:10px; border-top:1px solid var(--line); justify-content:space-between; display:flex; width:100%; }
+        .stack-card.skipped { opacity:.7; }
+        .ghost { border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:8px; padding:6px 14px; font-weight:500; display:inline-flex; gap:8px; align-items:center; }
+        .ghost:hover { border-color:var(--accent); color:var(--accent); }
+        .empty { grid-column:1/-1; text-align:center; padding:28px; color:var(--muted); }
+        .logs-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+        .link { background:none; border:0; color:var(--muted); text-decoration:underline; padding:0; }
+        pre { margin:0; background:var(--term); color:var(--term-ink); border-radius:10px; padding:16px; font:13px/1.7 "IBM Plex Mono", ui-monospace, monospace; max-height:260px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
+        @media (max-width:720px) { .grid { grid-template-columns:1fr; } .run { grid-template-columns:1fr; } .run .primary { justify-content:center; } }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h1>⚙️ Portainer Stack Manager</h1>
-        <div style="display: flex; gap: 1rem; align-items: center;">
-            <div><strong>Last Global Run:</strong> <span id="last-run">--</span></div>
-            <div><strong>Status:</strong> <span id="status-badge" class="badge Idle">Loading...</span></div>
+<main>
+    <header class="top">
+        <div>
+            <h1>Stack Manager</h1>
+            <div class="conn"><span id="connection-dot" class="dot"></span><span id="portainer-status">Connecting to Portainer...</span></div>
         </div>
+        <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()">Dark mode</button>
+    </header>
 
-        <button class="btn-global" id="global-update-btn" onclick="triggerUpdate()">Check & Update All Stacks Now</button>
-        <div class="schedule">
-            <label>
-                <input type="checkbox" id="schedule-enabled" onchange="saveSchedule()">
-                Run global update on schedule
-            </label>
+    <section class="panel run" aria-label="Global update">
+        <div class="meta">
+            <div><span>Last global run</span><span id="last-run">Never</span></div>
+            <div><span>Result</span><span class="badge" id="status-badge">Idle</span></div>
+            <div><span>Next run</span><span id="next-run">Not scheduled</span></div>
+        </div>
+        <button class="primary" id="global-update-btn" onclick="triggerUpdate()">Check and update all stacks</button>
+        <div class="sched">
+            <label class="switch"><input type="checkbox" id="schedule-enabled" onchange="saveSchedule()"><i></i>Run on a schedule</label>
             <select id="schedule-interval" onchange="saveSchedule()">
-                <option value="15m">Every 15 minutes</option>
-                <option value="1h">Every hour</option>
-                <option value="6h">Every 6 hours</option>
-                <option value="daily">Once a day</option>
+                <option value="15m">Every 15 minutes</option><option value="1h">Every hour</option>
+                <option value="6h">Every 6 hours</option><option value="daily">Every day</option>
             </select>
-            <span class="schedule-status" id="schedule-status"></span>
+            <span class="muted" id="schedule-status"></span>
         </div>
-    </div>
+    </section>
 
-    <div class="card">
-        <h2>Managed Stacks</h2>
-        <div id="portainer-status" style="margin-top: 0.5rem; color: #4ade80;"></div>
-        <table>
-            <thead>
-                <tr>
-                    <th>Stack Name</th>
-                    <th>Stack status</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody id="stacks-table">
-                <tr><td colspan="3" style="text-align: center; color: #94a3b8;">Loading stacks from Portainer...</td></tr>
-            </tbody>
-        </table>
-    </div>
+    <section class="panel" aria-label="Managed stacks">
+        <div class="top"><h2>Stacks</h2></div>
+        <div class="health" id="health" role="img" aria-label="Stack health"></div>
+        <div class="legend" id="legend"></div>
+        <div class="bar">
+            <input type="search" id="stack-search" placeholder="Search stacks" aria-label="Search stacks">
+            <div class="chips">
+                <button class="chip" data-filter="all" aria-pressed="true">All</button>
+                <button class="chip" data-filter="running" aria-pressed="false">Running</button>
+                <button class="chip" data-filter="stopped" aria-pressed="false">Stopped</button>
+            </div>
+        </div>
+        <div class="grid" id="stacks-grid"><div class="empty">Loading stacks from Portainer...</div></div>
+    </section>
 
-    <div class="card">
-        <h2>Execution Logs</h2>
-        <div class="logs" id="logs-container">No logs available yet.</div>
-    </div>
+    <section class="panel" aria-label="Execution logs">
+        <div class="logs-head"><h2>Execution logs</h2><button class="link" id="clear-logs">Clear</button></div>
+        <pre id="logs-container" aria-live="polite">No logs available yet.</pre>
+    </section>
+</main>
+<script>
+    let stacks = [], filter = 'all', query = '', currentData = {};
+    const $ = id => document.getElementById(id);
+    const escapeHtml = value => String(value).replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
+    const intervalText = { '15m':'15 minutes', '1h':'1 hour', '6h':'6 hours', 'daily':'day' };
 
-    <script>
-        async function fetchData() {
-            try {
-                const res = await fetch('/api/data');
-                const data = await res.json();
+    function applyTheme(theme) {
+        document.documentElement.dataset.theme = theme;
+        localStorage.setItem('woods-keeper-theme', theme);
+        $('theme-toggle').innerText = theme === 'dark' ? 'Light mode' : 'Dark mode';
+    }
 
-                const portainerStatus = document.getElementById('portainer-status');
-                if (data.portainer_connected) {
-                    portainerStatus.innerText = 'Connected to Portainer';
-                    portainerStatus.style.color = '#4ade80';
-                } else {
-                    portainerStatus.innerText = data.portainer_error;
-                    portainerStatus.style.color = '#fca5a5';
-                }
-                
-                document.getElementById('last-run').innerText = data.last_run;
-                if (data.schedule) {
-                    document.getElementById('schedule-enabled').checked = data.schedule.enabled;
-                    document.getElementById('schedule-interval').value = data.schedule.interval;
-                    document.getElementById('schedule-status').innerText = data.schedule.enabled
-                        ? 'Enabled'
-                        : 'Disabled';
-                }
-                const badge = document.getElementById('status-badge');
-                badge.innerText = data.status;
-                badge.className = 'badge ' + data.status;
+    function toggleTheme() {
+        applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+    }
 
-                const btn = document.getElementById('global-update-btn');
-                if (data.is_running) {
-                    btn.disabled = true;
-                    btn.innerText = 'Update in Progress...';
-                } else {
-                    btn.disabled = false;
-                    btn.innerText = 'Check & Update All Stacks Now';
-                }
+    function renderHealth() {
+        const running = stacks.filter(s => s.status === 'Active').length;
+        const stopped = stacks.length - running;
+        const total = stacks.length || 1;
+        $('health').innerHTML = `<b class="r" style="width:${running / total * 100}%"></b><b class="s" style="width:${stopped / total * 100}%"></b>`;
+        $('legend').innerHTML = `<span><i class="dot"></i>${running} running</span><span><i class="dot off"></i>${stopped} stopped</span><span>${stacks.length} total</span>`;
+    }
 
-                const tbody = document.getElementById('stacks-table');
-                if (data.stacks && data.stacks.length > 0) {
-                    tbody.innerHTML = data.stacks.map(s => `
-                        <tr>
-                            <td><strong>${s.name}</strong></td>
-                            <td>
-                                <span class="stack-status ${s.status === 'Active' ? 'running' : 'stopped'}">
-                                    <span class="status-dot"></span>
-                                    ${s.status === 'Active' ? 'RUNNING' : 'STOPPED'}
-                                </span>
-                            </td>
-                            <td>
-                                <label class="stack-option">
-                                    <input type="checkbox" ${s.excluded ? 'checked' : ''}
-                                        onchange="setStackExcluded(${s.id}, this.checked)">
-                                    Skip global updates
-                                </label>
-                                <button onclick="triggerStackUpdate(${s.id}, ${s.excluded})"
-                                    ${data.is_running ? 'disabled' : ''}>Update Stack</button>
-                            </td>
-                        </tr>
-                    `).join('');
-                } else {
-                    tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #94a3b8;">No stacks found or failed to connect to Portainer API.</td></tr>`;
-                }
+    function renderStacks() {
+        const visible = stacks.filter(s =>
+            (filter === 'all' || (filter === 'running') === (s.status === 'Active')) &&
+            String(s.name).toLowerCase().includes(query)
+        );
+        $('stacks-grid').innerHTML = visible.length ? visible.map(s => `
+            <article class="stack-card ${s.status === 'Active' ? '' : 'stopped'} ${s.excluded ? 'skipped' : ''}">
+                <div>
+                    <h3><span class="dot"></span>${escapeHtml(s.name)}</h3>
+                    <div class="state">${s.status === 'Active' ? 'Running' : 'Stopped'}</div>
+                </div>
+                <button class="ghost" onclick="triggerStackUpdate(${s.id}, ${s.excluded})" ${currentData.is_running ? 'disabled' : ''}>Update</button>
+                <label class="skip switch">Skip global updates
+                    <input type="checkbox" ${s.excluded ? 'checked' : ''} onchange="setStackExcluded(${s.id}, this.checked)"><i></i>
+                </label>
+            </article>
+        `).join('') : '<div class="empty">No stacks match your search. Clear the search or switch the filter to All.</div>';
+    }
 
-                const logsContainer = document.getElementById('logs-container');
-                if (data.logs && data.logs.length > 0) {
-                    logsContainer.innerText = data.logs.join('\\n');
-                }
-            } catch (e) {
-                console.error("Failed to fetch dashboard data", e);
-            }
+    function render() {
+        renderHealth();
+        renderStacks();
+        const schedule = currentData.schedule || { enabled:false, interval:'1h' };
+        $('schedule-enabled').checked = schedule.enabled;
+        $('schedule-interval').value = schedule.interval;
+        $('schedule-interval').disabled = !schedule.enabled;
+        $('schedule-status').innerText = schedule.enabled ? 'Enabled' : 'Disabled';
+        $('next-run').innerText = schedule.enabled ? `Every ${intervalText[schedule.interval]}` : 'Not scheduled';
+    }
+
+    async function fetchData() {
+        try {
+            const response = await fetch('/api/data');
+            currentData = await response.json();
+            stacks = currentData.stacks || [];
+            $('portainer-status').innerText = currentData.portainer_connected ? 'Connected to Portainer' : currentData.portainer_error;
+            $('connection-dot').className = `dot${currentData.portainer_connected ? '' : ' off'}`;
+            $('last-run').innerText = currentData.last_run;
+            const badge = $('status-badge');
+            badge.innerText = currentData.status;
+            badge.className = `badge${currentData.is_running ? ' busy' : ''}`;
+            $('global-update-btn').disabled = currentData.is_running;
+            $('global-update-btn').innerText = currentData.is_running ? 'Updating...' : 'Check and update all stacks';
+            $('logs-container').innerText = (currentData.logs || []).join('\\n') || 'No logs available yet.';
+            render();
+        } catch (error) {
+            console.error('Failed to fetch dashboard data', error);
         }
+    }
 
-        async function triggerUpdate(stackId = null) {
-            document.getElementById('global-update-btn').disabled = true;
-            await fetch('/api/update', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ stack_id: stackId })
-            });
-            setTimeout(fetchData, 1000);
-        }
+    async function triggerUpdate(stackId = null) {
+        if (stackId === null) $('global-update-btn').disabled = true;
+        await fetch('/api/update', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({stack_id:stackId}) });
+        setTimeout(fetchData, 1000);
+    }
 
-        async function triggerStackUpdate(stackId, excluded) {
-            if (excluded && !confirm(
-                'This stack is excluded from global updates. Are you sure you want to pull new images and update it now?'
-            )) {
-                return;
-            }
-            await triggerUpdate(stackId);
-        }
+    async function triggerStackUpdate(stackId, excluded) {
+        if (excluded && !confirm('This stack is excluded from global updates. Are you sure you want to pull new images and update it now?')) return;
+        await triggerUpdate(stackId);
+    }
 
-        async function setStackExcluded(stackId, excluded) {
-            const response = await fetch('/api/stack-settings', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ stack_id: stackId, excluded })
-            });
-            if (!response.ok) {
-                alert('Could not save the stack update setting.');
-                fetchData();
-            }
-        }
+    async function setStackExcluded(stackId, excluded) {
+        const response = await fetch('/api/stack-settings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({stack_id:stackId, excluded}) });
+        if (!response.ok) { alert('Could not save the stack update setting.'); fetchData(); }
+        else { const stack = stacks.find(s => s.id === stackId); if (stack) stack.excluded = excluded; renderStacks(); }
+    }
 
-        async function saveSchedule() {
-            const status = document.getElementById('schedule-status');
-            status.innerText = 'Saving...';
-            const response = await fetch('/api/schedule', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    enabled: document.getElementById('schedule-enabled').checked,
-                    interval: document.getElementById('schedule-interval').value
-                })
-            });
-            status.innerText = response.ok ? 'Saved' : 'Save failed';
-            if (!response.ok) {
-                setTimeout(fetchData, 500);
-            }
-        }
+    async function saveSchedule() {
+        const enabled = $('schedule-enabled').checked;
+        const interval = $('schedule-interval').value;
+        const response = await fetch('/api/schedule', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled, interval}) });
+        if (response.ok) { currentData.schedule = await response.json(); render(); }
+        else { alert('Could not save the schedule.'); fetchData(); }
+    }
 
-        setInterval(fetchData, 4000);
-        fetchData();
-    </script>
+    $('stack-search').oninput = event => { query = event.target.value.trim().toLowerCase(); renderStacks(); };
+    document.querySelectorAll('[data-filter]').forEach(button => button.onclick = () => {
+        filter = button.dataset.filter;
+        document.querySelectorAll('[data-filter]').forEach(item => item.setAttribute('aria-pressed', item === button));
+        renderStacks();
+    });
+    $('clear-logs').onclick = () => { $('logs-container').innerText = ''; };
+    applyTheme(localStorage.getItem('woods-keeper-theme') || 'light');
+    setInterval(fetchData, 4000);
+    fetchData();
+</script>
 </body>
 </html>
 """
