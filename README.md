@@ -22,6 +22,7 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
   * Trigger updates across all managed stacks globally.
   * Trigger manual redeployments for individual stacks directly from the Web UI.
 * **Scheduled Updates**: Enable recurring global update checks from the dashboard header.
+* **Per-Stack Global Update Control**: Exclude selected stacks from global and scheduled updates while retaining manual updates with confirmation.
 * **Standalone Safety**: Intelligently skips standalone containers not associated with a Docker Compose stack to prevent unexpected breakages.
 * **Live Status & Logs**: Displays real-time operation logs and execution statuses inside the browser.
 * **Multi-Arch Support**: Docker images built for `linux/amd64` and `linux/arm64` (ideal for Raspberry Pi setups).
@@ -84,6 +85,10 @@ services:
 volumes:
   woods_keeper_data:
 ```
+
+Copy `.env.example` to `.env` and replace the placeholder values before
+starting the application. Do not commit `.env`; it may contain your Portainer
+API key and dashboard password.
 
 > **⚠️ Important Note on `PORTAINER_URL`:**
 > Use an HTTPS Portainer URL. Woods Keeper rejects plain HTTP so the API key cannot be sent unencrypted. Do **not** use `localhost` or `127.0.0.1` unless Portainer is reachable there with a trusted HTTPS certificate.
@@ -188,6 +193,10 @@ the same HTTP Basic authentication as `/api/update`.
 
 Supported intervals are `15m`, `1h`, `6h`, and `daily`. Scheduled runs perform
 the same global update scan as the **Check & Update All Stacks Now** button.
+
+Each stack can be marked **Skip global updates** in the stack list. Excluded
+stacks are skipped by global and scheduled scans. Updating an excluded stack
+manually requires confirmation before Portainer pulls new images.
 
 ---
 

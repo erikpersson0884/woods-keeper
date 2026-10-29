@@ -50,6 +50,11 @@ redeploy_stack() {
       -d @- | jq '{Id, Name, Status}'
 }
 
+is_excluded_stack() {
+  local id="$1"
+  [[ ",${EXCLUDED_STACK_IDS:-}," == *",$id,"* ]]
+}
+
 if [[ -n "$TARGET_STACK_ID" ]]; then
   redeploy_stack "$TARGET_STACK_ID"
   exit $?
@@ -101,6 +106,11 @@ for project in $STACK_PROJECTS; do
   
   if [[ -z "${id:-}" || "$id" == "null" ]]; then
     log "stack $project not found in Portainer, skipping"
+    continue
+  fi
+
+  if is_excluded_stack "$id"; then
+    log "skipping $project (stack $id is excluded from global updates)"
     continue
   fi
   

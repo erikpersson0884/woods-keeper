@@ -97,6 +97,7 @@ SCHEDULE_INTERVALS = {
     "6h": 6 * 60 * 60,
     "daily": 24 * 60 * 60,
 }
+DEFAULT_SCHEDULE = {"enabled": False, "interval": "1h", "excluded_stack_ids": []}
 
 
 def load_schedule():
@@ -111,10 +112,13 @@ def load_schedule():
                 return {
                     "enabled": bool(schedule.get("enabled", False)),
                     "interval": schedule["interval"],
+                    "excluded_stack_ids": [
+                        str(stack_id) for stack_id in schedule.get("excluded_stack_ids", [])
+                    ],
                 }
         except (OSError, json.JSONDecodeError):
             pass
-    return {"enabled": False, "interval": "1h"}
+    return DEFAULT_SCHEDULE.copy()
 
 
 def save_schedule(schedule):
@@ -166,14 +170,23 @@ def run_update_process(stack_id=None):
 
     try:
         cmd = ["./auto-update.sh"]
+        process_env = os.environ.copy()
         if stack_id:
             cmd.append(str(stack_id))
+        else:
+            with schedule_lock:
+                excluded_stack_ids = load_schedule()["excluded_stack_ids"]
+            if excluded_stack_ids:
+                process_env["EXCLUDED_STACK_IDS"] = ",".join(excluded_stack_ids)
+            else:
+                process_env.pop("EXCLUDED_STACK_IDS", None)
 
         process = subprocess.Popen(
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True
+            text=True,
+            env=process_env
         )
         output, _ = process.communicate()
 
@@ -211,7 +224,8 @@ def api_data():
             "id": s.get("Id"),
             "name": s.get("Name"),
             "endpoint_id": s.get("EndpointId"),
-            "status": "Active" if s.get("Status") == 1 else "Inactive"
+            "status": "Active" if s.get("Status") == 1 else "Inactive",
+            "excluded": str(s.get("Id")) in schedule["excluded_stack_ids"],
         })
 
     return jsonify({
@@ -251,11 +265,34 @@ def update_schedule():
             f"{', '.join(SCHEDULE_INTERVALS)}"
         }), 400
 
-    schedule = {"enabled": enabled, "interval": interval}
     with schedule_lock:
+        schedule = load_schedule()
+        schedule.update({"enabled": enabled, "interval": interval})
         save_schedule(schedule)
     schedule_wakeup.set()
     return jsonify(schedule)
+
+
+@app.route("/api/stack-settings", methods=["POST"])
+@requires_admin_auth
+def update_stack_settings():
+    data = request.get_json() or {}
+    stack_id = data.get("stack_id")
+    excluded = data.get("excluded")
+    if stack_id is None or not isinstance(excluded, bool):
+        return jsonify({"error": "stack_id and excluded are required"}), 400
+
+    stack_id = str(stack_id)
+    with schedule_lock:
+        schedule = load_schedule()
+        excluded_stack_ids = set(schedule["excluded_stack_ids"])
+        if excluded:
+            excluded_stack_ids.add(stack_id)
+        else:
+            excluded_stack_ids.discard(stack_id)
+        schedule["excluded_stack_ids"] = sorted(excluded_stack_ids)
+        save_schedule(schedule)
+    return jsonify({"stack_id": stack_id, "excluded": excluded})
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -288,6 +325,7 @@ HTML_TEMPLATE = """
         .stack-status.running { background: #14532d; color: #86efac; }
         .stack-status.stopped { background: #450a0a; color: #fca5a5; }
         .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+        .stack-option { display: flex; align-items: center; gap: 6px; font-size: 0.85rem; color: #cbd5e1; }
         .schedule { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
         .schedule select, .schedule button { padding: 8px; border-radius: 6px; border: 1px solid #475569; }
         .schedule select { background: #0f172a; color: #f8fafc; }
@@ -387,7 +425,15 @@ HTML_TEMPLATE = """
                                     ${s.status === 'Active' ? 'RUNNING' : 'STOPPED'}
                                 </span>
                             </td>
-                            <td><button onclick="triggerUpdate(${s.id})" ${data.is_running ? 'disabled' : ''}>Update Stack</button></td>
+                            <td>
+                                <label class="stack-option">
+                                    <input type="checkbox" ${s.excluded ? 'checked' : ''}
+                                        onchange="setStackExcluded(${s.id}, this.checked)">
+                                    Skip global updates
+                                </label>
+                                <button onclick="triggerStackUpdate(${s.id}, ${s.excluded})"
+                                    ${data.is_running ? 'disabled' : ''}>Update Stack</button>
+                            </td>
                         </tr>
                     `).join('');
                 } else {
@@ -411,6 +457,27 @@ HTML_TEMPLATE = """
                 body: JSON.stringify({ stack_id: stackId })
             });
             setTimeout(fetchData, 1000);
+        }
+
+        async function triggerStackUpdate(stackId, excluded) {
+            if (excluded && !confirm(
+                'This stack is excluded from global updates. Are you sure you want to pull new images and update it now?'
+            )) {
+                return;
+            }
+            await triggerUpdate(stackId);
+        }
+
+        async function setStackExcluded(stackId, excluded) {
+            const response = await fetch('/api/stack-settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ stack_id: stackId, excluded })
+            });
+            if (!response.ok) {
+                alert('Could not save the stack update setting.');
+                fetchData();
+            }
         }
 
         async function saveSchedule() {

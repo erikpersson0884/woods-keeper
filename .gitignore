@@ -13,6 +13,7 @@ ENV/
 # Environment variables and Flask instance data
 .env
 .env.*
+!.env.example
 instance/
 
 # Persistent runtime state
