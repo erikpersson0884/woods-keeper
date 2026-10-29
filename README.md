@@ -144,6 +144,10 @@ persistent `data` volume and is disabled by default.
 ```
 .
 ├── app.py              # Flask server handling UI, routes, and API calls
+├── config.py           # Environment configuration and validation
+├── storage.py          # Runtime status and schedule persistence
+├── templates/          # Login and dashboard HTML templates
+├── static/              # Dashboard CSS and JavaScript assets
 ├── auto-update.sh      # Core shell script inspecting containers & querying Docker/Portainer
 ├── Dockerfile          # Multi-arch Docker container definition
 ├── data/               # Persistent data folder (holds status.json)

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Stack Manager</title>
+    <link rel="icon" href="/favicon.ico" type="image/png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+
+</head>
+<body>
+<main>
+    <header class="top">
+        <div>
+            <h1>Stack Manager</h1>
+            <div class="conn"><span id="connection-dot" class="dot"></span><span id="portainer-status">Connecting to Portainer...</span></div>
+        </div>
+        <div class="header-actions">
+            <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()">Dark mode</button>
+            <form method="post" action="/logout">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="logout" type="submit">Sign out</button>
+            </form>
+        </div>
+    </header>
+
+    <section class="panel run" aria-label="Global update">
+        <div class="meta">
+            <div><span>Last global run</span><span id="last-run">Never</span></div>
+            <div><span>Result</span><span class="badge" id="status-badge">Idle</span></div>
+            <div><span>Next run</span><span id="next-run">Not scheduled</span></div>
+        </div>
+        <button class="primary" id="global-update-btn" onclick="triggerUpdate()">Check and update all stacks</button>
+        <div class="sched">
+            <label class="switch"><input type="checkbox" id="schedule-enabled" onchange="saveSchedule()"><i></i>Run on a schedule</label>
+            <select id="schedule-interval" onchange="saveSchedule()">
+                <option value="15m">Every 15 minutes</option><option value="1h">Every hour</option>
+                <option value="6h">Every 6 hours</option><option value="daily">Every day</option>
+            </select>
+            <span class="muted" id="schedule-status"></span>
+        </div>
+    </section>
+
+    <section class="panel" aria-label="Managed stacks">
+        <div class="top"><h2>Stacks</h2></div>
+        <div class="health" id="health" role="img" aria-label="Stack health"></div>
+        <div class="legend" id="legend"></div>
+        <div class="bar">
+            <input type="search" id="stack-search" placeholder="Search stacks" aria-label="Search stacks">
+            <div class="chips">
+                <button class="chip" data-filter="all" aria-pressed="true">All</button>
+                <button class="chip" data-filter="running" aria-pressed="false">Running</button>
+                <button class="chip" data-filter="stopped" aria-pressed="false">Stopped</button>
+            </div>
+        </div>
+        <div class="grid" id="stacks-grid"><div class="empty">Loading stacks from Portainer...</div></div>
+    </section>
+
+    <section class="panel" aria-label="Execution logs">
+        <div class="logs-head"><h2>Execution logs</h2><button class="link" id="clear-logs">Clear</button></div>
+        <pre id="logs-container" aria-live="polite">No logs available yet.</pre>
+    </section>
+</main>
+    <script>
+        const csrfToken = {{ csrf_token|tojson }};
+    </script>
+    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+</body>
+</html>
