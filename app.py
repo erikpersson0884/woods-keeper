@@ -78,6 +78,34 @@ def _authentication_required_response():
     return response
 
 
+def get_csrf_token():
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session["csrf_token"] = token
+    return token
+
+
+def csrf_protected(view):
+    @wraps(view)
+    def protected_view(*args, **kwargs):
+        if session.get("authenticated") is True:
+            expected_token = session.get("csrf_token")
+            submitted_token = (
+                request.headers.get("X-CSRF-Token")
+                or request.form.get("csrf_token")
+            )
+            if (
+                not expected_token
+                or not submitted_token
+                or not secrets.compare_digest(expected_token, submitted_token)
+            ):
+                return jsonify({"error": "CSRF validation failed"}), 403
+        return view(*args, **kwargs)
+
+    return protected_view
+
+
 def is_authenticated():
     if session.get("authenticated") is True:
         return True
@@ -225,8 +253,8 @@ def run_update_process(stack_id=None):
 @app.route("/")
 def index():
     if not is_authenticated():
-        return render_template_string(LOGIN_TEMPLATE)
-    return render_template_string(HTML_TEMPLATE)
+        return render_template_string(LOGIN_TEMPLATE, csrf_token=get_csrf_token())
+    return render_template_string(HTML_TEMPLATE, csrf_token=get_csrf_token())
 
 
 @app.route("/favicon.ico")
@@ -268,6 +296,7 @@ def api_data():
 
 @app.route("/api/update", methods=["POST"])
 @requires_admin_auth
+@csrf_protected
 def trigger_update():
     if is_running:
         return jsonify({"message": "Update already in progress"}), 409
@@ -282,6 +311,7 @@ def trigger_update():
 
 @app.route("/api/schedule", methods=["POST"])
 @requires_admin_auth
+@csrf_protected
 def update_schedule():
     data = request.get_json() or {}
     interval = data.get("interval")
@@ -302,6 +332,7 @@ def update_schedule():
 
 @app.route("/api/stack-settings", methods=["POST"])
 @requires_admin_auth
+@csrf_protected
 def update_stack_settings():
     data = request.get_json() or {}
     stack_id = data.get("stack_id")
@@ -326,17 +357,25 @@ def update_stack_settings():
 def login():
     username = request.form.get("username", "")
     password = request.form.get("password", "")
+    submitted_token = request.form.get("csrf_token")
     if (
         secrets.compare_digest(username, ADMIN_USERNAME)
         and secrets.compare_digest(password, ADMIN_PASSWORD)
+        and submitted_token
+        and secrets.compare_digest(get_csrf_token(), submitted_token)
     ):
         session["authenticated"] = True
         return redirect(url_for("index"))
-    return render_template_string(LOGIN_TEMPLATE, error="Invalid username or password."), 401
+    return render_template_string(
+        LOGIN_TEMPLATE,
+        csrf_token=get_csrf_token(),
+        error="Invalid username or password.",
+    ), 401
 
 
 @app.route("/logout", methods=["POST"])
 @requires_admin_auth
+@csrf_protected
 def logout():
     session.clear()
     return redirect(url_for("index"))
@@ -368,6 +407,7 @@ LOGIN_TEMPLATE = """
         <p>Sign in to manage your Portainer stacks.</p>
         {% if error %}<div class="error" role="alert">{{ error }}</div>{% endif %}
         <form method="post" action="/login">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
             <label>Username<input name="username" autocomplete="username" required autofocus></label>
             <label>Password<input type="password" name="password" autocomplete="current-password" required></label>
             <button type="submit">Sign in</button>
@@ -458,7 +498,10 @@ HTML_TEMPLATE = """
         </div>
         <div class="header-actions">
             <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()">Dark mode</button>
-            <form method="post" action="/logout"><button class="logout" type="submit">Sign out</button></form>
+            <form method="post" action="/logout">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="logout" type="submit">Sign out</button>
+            </form>
         </div>
     </header>
 
@@ -501,6 +544,7 @@ HTML_TEMPLATE = """
 </main>
 <script>
     let stacks = [], filter = 'all', query = '', currentData = {};
+    const csrfToken = {{ csrf_token|tojson }};
     const $ = id => document.getElementById(id);
     const escapeHtml = value => String(value).replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
     const intervalText = { '15m':'15 minutes', '1h':'1 hour', '6h':'6 hours', 'daily':'day' };
@@ -575,7 +619,7 @@ HTML_TEMPLATE = """
 
     async function triggerUpdate(stackId = null) {
         if (stackId === null) $('global-update-btn').disabled = true;
-        await fetch('/api/update', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({stack_id:stackId}) });
+        await fetch('/api/update', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token':csrfToken}, body:JSON.stringify({stack_id:stackId}) });
         setTimeout(fetchData, 1000);
     }
 
@@ -585,7 +629,7 @@ HTML_TEMPLATE = """
     }
 
     async function setStackExcluded(stackId, excluded) {
-        const response = await fetch('/api/stack-settings', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({stack_id:stackId, excluded}) });
+        const response = await fetch('/api/stack-settings', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token':csrfToken}, body:JSON.stringify({stack_id:stackId, excluded}) });
         if (!response.ok) { alert('Could not save the stack update setting.'); fetchData(); }
         else { const stack = stacks.find(s => s.id === stackId); if (stack) stack.excluded = excluded; renderStacks(); }
     }
@@ -593,7 +637,7 @@ HTML_TEMPLATE = """
     async function saveSchedule() {
         const enabled = $('schedule-enabled').checked;
         const interval = $('schedule-interval').value;
-        const response = await fetch('/api/schedule', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({enabled, interval}) });
+        const response = await fetch('/api/schedule', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token':csrfToken}, body:JSON.stringify({enabled, interval}) });
         if (response.ok) { currentData.schedule = await response.json(); render(); }
         else { alert('Could not save the schedule.'); fetchData(); }
     }

@@ -213,6 +213,10 @@ the same HTTP Basic authentication as `/api/update`.
 Supported intervals are `15m`, `1h`, `6h`, and `daily`. Scheduled runs perform
 the same global update scan as the **Check & Update All Stacks Now** button.
 
+Browser requests that change data use a session CSRF token. API clients using
+HTTP Basic authentication may continue to call the management endpoints
+directly without a session CSRF token.
+
 Each stack can be marked **Skip global updates** in the stack list. Excluded
 stacks are skipped by global and scheduled scans. Updating an excluded stack
 manually requires confirmation before Portainer pulls new images.
