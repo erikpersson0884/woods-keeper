@@ -7,6 +7,13 @@ flock -n 9 || exit 0
 
 log() { echo "$(date '+%F %T') $*"; }
 
+if [[ "${PORTAINER_URL:-}" != https://* ]] \
+  && { [[ "${PORTAINER_URL:-}" != http://* ]] \
+    || [[ "${ALLOW_INSECURE_PORTAINER_HTTP:-}" != "true" ]]; }; then
+  log "PORTAINER_URL must use HTTPS (set ALLOW_INSECURE_PORTAINER_HTTP=true only for a trusted private network)"
+  exit 1
+fi
+
 is_latest() {
   [[ "$1" == *@* ]] && return 1
   local name="${1##*/}"

@@ -10,8 +10,11 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - PORTAINER_URL=http://your-portainer-ip:9000   # Change to your Portainer URL
-      - API_KEY=ptr_your_portainer_api_key_here         # Your Portainer API Key
+      - PORTAINER_URL=${PORTAINER_URL:?Set PORTAINER_URL to an HTTPS Portainer URL}
+      - ALLOW_INSECURE_PORTAINER_HTTP=${ALLOW_INSECURE_PORTAINER_HTTP:-false}
+      - API_KEY=${API_KEY:?Set API_KEY through your environment or a secret manager}
+      - ADMIN_USERNAME=${ADMIN_USERNAME:?Set ADMIN_USERNAME through your environment}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD through your environment}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock       # Needed to inspect/pull docker images
       - updater_data:/app/data

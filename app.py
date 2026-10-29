@@ -2,15 +2,75 @@ import os
 import subprocess
 import json
 import threading
+import base64
+import binascii
+import secrets
 from datetime import datetime
+from dotenv import load_dotenv
+from functools import wraps
+from urllib.parse import urlparse
 from flask import Flask, render_template_string, jsonify, request, send_file
 import urllib.request
+import urllib.error
+
+load_dotenv()
 
 app = Flask(__name__)
 
 STATUS_FILE = "data/status.json"
-PORTAINER_URL = os.environ.get("PORTAINER_URL", "http://localhost:9000")
+PORTAINER_URL = os.environ.get("PORTAINER_URL", "https://localhost:9000")
 API_KEY = os.environ.get("API_KEY", "")
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+ALLOW_INSECURE_PORTAINER_HTTP = (
+    os.environ.get("ALLOW_INSECURE_PORTAINER_HTTP", "").lower() == "true"
+)
+
+
+def validate_portainer_url():
+    parsed_url = urlparse(PORTAINER_URL)
+    allowed_schemes = {"https"}
+    if ALLOW_INSECURE_PORTAINER_HTTP:
+        allowed_schemes.add("http")
+    if parsed_url.scheme not in allowed_schemes or not parsed_url.netloc:
+        required_scheme = "HTTP or HTTPS" if ALLOW_INSECURE_PORTAINER_HTTP else "HTTPS"
+        raise RuntimeError(
+            f"PORTAINER_URL must be an absolute {required_scheme} URL"
+        )
+
+
+def requires_admin_auth(view):
+    @wraps(view)
+    def authenticated_view(*args, **kwargs):
+        authorization = request.headers.get("Authorization", "")
+        if not authorization.startswith("Basic "):
+            return _authentication_required_response()
+
+        try:
+            encoded_credentials = authorization[6:].strip()
+            decoded_credentials = base64.b64decode(
+                encoded_credentials, validate=True
+            ).decode("utf-8")
+            username, password = decoded_credentials.split(":", 1)
+        except (ValueError, UnicodeDecodeError, binascii.Error):
+            return _authentication_required_response()
+
+        if not (
+            secrets.compare_digest(username, ADMIN_USERNAME)
+            and secrets.compare_digest(password, ADMIN_PASSWORD)
+        ):
+            return _authentication_required_response()
+
+        return view(*args, **kwargs)
+
+    return authenticated_view
+
+
+def _authentication_required_response():
+    response = jsonify({"error": "Authentication required"})
+    response.status_code = 401
+    response.headers["WWW-Authenticate"] = 'Basic realm="Woods Keeper"'
+    return response
 
 def load_status():
     if os.path.exists(STATUS_FILE):
@@ -34,10 +94,14 @@ def get_portainer_stacks():
             f"{PORTAINER_URL}/api/stacks",
             headers={"X-API-Key": API_KEY}
         )
-        with urllib.request.urlopen(req) as response:
-            return json.loads(response.read().decode())
-    except Exception as e:
-        return []
+        with urllib.request.urlopen(req, timeout=10) as response:
+            return json.loads(response.read().decode()), None
+    except urllib.error.HTTPError as error:
+        return [], f"Portainer returned HTTP {error.code}"
+    except (urllib.error.URLError, TimeoutError) as error:
+        return [], f"Could not connect to Portainer: {error.reason if isinstance(error, urllib.error.URLError) else error}"
+    except (json.JSONDecodeError, UnicodeDecodeError):
+        return [], "Portainer returned an invalid response"
 
 def run_update_process(stack_id=None):
     global is_running
@@ -51,14 +115,14 @@ def run_update_process(stack_id=None):
     save_status(status_data)
 
     try:
-        cmd = ["/app/auto-update.sh"]
+        cmd = ["./auto-update.sh"]
         if stack_id:
             # If a specific stack ID is passed, we can target it or pass it as an arg if script supports it.
             # Here we can run the global auto-updater or trigger a specific stack update script call.
             pass
 
         process = subprocess.Popen(
-            ["/app/auto-update.sh"],
+            ["./auto-update.sh"],
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True
@@ -89,7 +153,7 @@ def favicon():
 @app.route("/api/data")
 def api_data():
     status_data = load_status()
-    stacks = get_portainer_stacks()
+    stacks, portainer_error = get_portainer_stacks()
     
     stack_list = []
     for s in stacks:
@@ -105,10 +169,13 @@ def api_data():
         "status": status_data.get("status"),
         "logs": status_data.get("logs", []),
         "is_running": is_running,
+        "portainer_connected": portainer_error is None,
+        "portainer_error": portainer_error,
         "stacks": stack_list
     })
 
 @app.route("/api/update", methods=["POST"])
+@requires_admin_auth
 def trigger_update():
     if is_running:
         return jsonify({"message": "Update already in progress"}), 409
@@ -162,6 +229,7 @@ HTML_TEMPLATE = """
 
     <div class="card">
         <h2>Managed Stacks</h2>
+        <div id="portainer-status" style="margin-top: 0.5rem; color: #4ade80;"></div>
         <table>
             <thead>
                 <tr>
@@ -186,6 +254,15 @@ HTML_TEMPLATE = """
             try {
                 const res = await fetch('/api/data');
                 const data = await res.json();
+
+                const portainerStatus = document.getElementById('portainer-status');
+                if (data.portainer_connected) {
+                    portainerStatus.innerText = 'Connected to Portainer';
+                    portainerStatus.style.color = '#4ade80';
+                } else {
+                    portainerStatus.innerText = data.portainer_error;
+                    portainerStatus.style.color = '#fca5a5';
+                }
                 
                 document.getElementById('last-run').innerText = data.last_run;
                 const badge = document.getElementById('status-badge');
@@ -241,4 +318,7 @@ HTML_TEMPLATE = """
 """
 
 if __name__ == "__main__":
+    validate_portainer_url()
+    if not ADMIN_USERNAME or not ADMIN_PASSWORD:
+        raise RuntimeError("ADMIN_USERNAME and ADMIN_PASSWORD must be configured")
     app.run(host="0.0.0.0", port=5000)

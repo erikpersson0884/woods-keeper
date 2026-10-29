@@ -72,8 +72,10 @@ services:
     ports:
       - "5000:5000"
     environment:
-      - PORTAINER_URL=http://<YOUR_PI_OR_SERVER_LAN_IP>:9000
-      - API_KEY=ptr_your_access_token_here
+      - PORTAINER_URL=https://<YOUR_PORTAINER_HOST>:9443
+      - API_KEY=${API_KEY}
+      - ADMIN_USERNAME=${ADMIN_USERNAME}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - woods_keeper_data:/app/data
@@ -82,8 +84,8 @@ volumes:
   woods_keeper_data:
 ```
 
-> **⚠️ Important Note on `PORTAINER_URL`:**  
-> Do **not** use `http://localhost:9000` or `127.0.0.1`. Inside Docker containers, `localhost` resolves to the container itself. Use your host machine's actual LAN IP address (e.g., `http://192.168.1.100:9000`).
+> **⚠️ Important Note on `PORTAINER_URL`:**
+> Use an HTTPS Portainer URL. Woods Keeper rejects plain HTTP so the API key cannot be sent unencrypted. Do **not** use `localhost` or `127.0.0.1` unless Portainer is reachable there with a trusted HTTPS certificate.
 
 ---
 
@@ -91,8 +93,22 @@ volumes:
 
 | Variable | Required | Default | Description |
 | :--- | :---: | :---: | :--- |
-| `PORTAINER_URL` | **Yes** | `http://localhost:9000` | Full URL (including port) of your Portainer instance accessible from inside the container. |
+| `PORTAINER_URL` | **Yes** | *None* | Full HTTPS URL (including port) of your Portainer instance accessible from inside the container. |
+| `ALLOW_INSECURE_PORTAINER_HTTP` | No | `false` | Set to `true` only when Portainer is reached over a trusted private network using plain HTTP. |
 | `API_KEY` | **Yes** | *None* | Portainer Access Token (`ptr_...`) used for API authentication. |
+| `ADMIN_USERNAME` | **Yes** | *None* | Username required for HTTP Basic authentication on update requests. |
+| `ADMIN_PASSWORD` | **Yes** | *None* | Strong password required for HTTP Basic authentication on update requests. |
+
+`PORTAINER_URL` must use HTTPS by default. To connect to an internal Portainer
+HTTP endpoint, explicitly set:
+
+```env
+PORTAINER_URL=http://portainer:9000
+ALLOW_INSECURE_PORTAINER_HTTP=true
+```
+
+Never enable this setting when Portainer traffic can cross an untrusted network;
+the API key would be sent without transport encryption.
 
 ---
 
@@ -141,6 +157,10 @@ Returns JSON formatted status data, current execution logs, and an array of all 
 ### 3. `POST /api/update`
 Triggers an asynchronous update job.
 
+This management endpoint requires HTTP Basic authentication using `ADMIN_USERNAME` and
+`ADMIN_PASSWORD`. Expose the application only through HTTPS (or a private VPN); Basic
+authentication must not be sent over plain HTTP.
+
 **Request Body (Optional):**
 ```json
 {
@@ -167,8 +187,10 @@ docker build -t woods-keeper .
 # Run locally
 docker run -d \
   -p 5000:5000 \
-  -e PORTAINER_URL="http://192.168.1.100:9000" \
+  -e PORTAINER_URL="https://portainer.example.com:9443" \
   -e API_KEY="ptr_..." \
+  -e ADMIN_USERNAME="admin" \
+  -e ADMIN_PASSWORD="use-a-long-random-password" \
   -v /var/run/docker.sock:/var/run/docker.sock:ro \
   woods-keeper
 ```
