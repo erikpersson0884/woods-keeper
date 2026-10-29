@@ -18,6 +18,7 @@ load_dotenv()
 app = Flask(__name__)
 
 STATUS_FILE = "data/status.json"
+SCHEDULE_FILE = "data/schedule.json"
 PORTAINER_URL = os.environ.get("PORTAINER_URL", "https://localhost:9000")
 API_KEY = os.environ.get("API_KEY", "")
 ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
@@ -88,6 +89,54 @@ def save_status(data):
         json.dump(data, f)
 
 is_running = False
+schedule_lock = threading.Lock()
+schedule_wakeup = threading.Event()
+SCHEDULE_INTERVALS = {
+    "15m": 15 * 60,
+    "1h": 60 * 60,
+    "6h": 6 * 60 * 60,
+    "daily": 24 * 60 * 60,
+}
+
+
+def load_schedule():
+    if os.path.exists(SCHEDULE_FILE):
+        try:
+            with open(SCHEDULE_FILE, "r") as f:
+                schedule = json.load(f)
+            if (
+                isinstance(schedule, dict)
+                and schedule.get("interval") in SCHEDULE_INTERVALS
+            ):
+                return {
+                    "enabled": bool(schedule.get("enabled", False)),
+                    "interval": schedule["interval"],
+                }
+        except (OSError, json.JSONDecodeError):
+            pass
+    return {"enabled": False, "interval": "1h"}
+
+
+def save_schedule(schedule):
+    os.makedirs(os.path.dirname(SCHEDULE_FILE), exist_ok=True)
+    with open(SCHEDULE_FILE, "w") as f:
+        json.dump(schedule, f)
+
+
+def scheduled_update_loop():
+    while True:
+        with schedule_lock:
+            schedule = load_schedule()
+        if not schedule["enabled"]:
+            schedule_wakeup.wait()
+            schedule_wakeup.clear()
+            continue
+
+        interval = SCHEDULE_INTERVALS[schedule["interval"]]
+        if schedule_wakeup.wait(timeout=interval):
+            schedule_wakeup.clear()
+            continue
+        run_update_process()
 
 def get_portainer_stacks():
     try:
@@ -152,6 +201,8 @@ def favicon():
 @app.route("/api/data")
 def api_data():
     status_data = load_status()
+    with schedule_lock:
+        schedule = load_schedule()
     stacks, portainer_error = get_portainer_stacks()
     
     stack_list = []
@@ -168,6 +219,7 @@ def api_data():
         "status": status_data.get("status"),
         "logs": status_data.get("logs", []),
         "is_running": is_running,
+        "schedule": schedule,
         "portainer_connected": portainer_error is None,
         "portainer_error": portainer_error,
         "stacks": stack_list
@@ -185,6 +237,25 @@ def trigger_update():
     thread = threading.Thread(target=run_update_process, args=(stack_id,))
     thread.start()
     return jsonify({"message": "Update triggered successfully"})
+
+
+@app.route("/api/schedule", methods=["POST"])
+@requires_admin_auth
+def update_schedule():
+    data = request.get_json() or {}
+    interval = data.get("interval")
+    enabled = data.get("enabled")
+    if interval not in SCHEDULE_INTERVALS or not isinstance(enabled, bool):
+        return jsonify({
+            "error": "enabled must be a boolean and interval must be one of "
+            f"{', '.join(SCHEDULE_INTERVALS)}"
+        }), 400
+
+    schedule = {"enabled": enabled, "interval": interval}
+    with schedule_lock:
+        save_schedule(schedule)
+    schedule_wakeup.set()
+    return jsonify(schedule)
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -213,6 +284,10 @@ HTML_TEMPLATE = """
         .badge.Success { background: #166534; color: #4ade80; }
         .badge.Failed { background: #991b1b; color: #fca5a5; }
         .badge.Updating\.\.\. { background: #854d0e; color: #fde047; }
+        .schedule { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+        .schedule select, .schedule button { padding: 8px; border-radius: 6px; border: 1px solid #475569; }
+        .schedule select { background: #0f172a; color: #f8fafc; }
+        .schedule-status { color: #94a3b8; font-size: 0.9rem; }
     </style>
 </head>
 <body>
@@ -224,6 +299,19 @@ HTML_TEMPLATE = """
         </div>
 
         <button class="btn-global" id="global-update-btn" onclick="triggerUpdate()">Check & Update All Stacks Now</button>
+        <div class="schedule">
+            <label>
+                <input type="checkbox" id="schedule-enabled" onchange="saveSchedule()">
+                Run global update on schedule
+            </label>
+            <select id="schedule-interval" onchange="saveSchedule()">
+                <option value="15m">Every 15 minutes</option>
+                <option value="1h">Every hour</option>
+                <option value="6h">Every 6 hours</option>
+                <option value="daily">Once a day</option>
+            </select>
+            <span class="schedule-status" id="schedule-status"></span>
+        </div>
     </div>
 
     <div class="card">
@@ -264,6 +352,13 @@ HTML_TEMPLATE = """
                 }
                 
                 document.getElementById('last-run').innerText = data.last_run;
+                if (data.schedule) {
+                    document.getElementById('schedule-enabled').checked = data.schedule.enabled;
+                    document.getElementById('schedule-interval').value = data.schedule.interval;
+                    document.getElementById('schedule-status').innerText = data.schedule.enabled
+                        ? 'Enabled'
+                        : 'Disabled';
+                }
                 const badge = document.getElementById('status-badge');
                 badge.innerText = data.status;
                 badge.className = 'badge ' + data.status;
@@ -309,6 +404,23 @@ HTML_TEMPLATE = """
             setTimeout(fetchData, 1000);
         }
 
+        async function saveSchedule() {
+            const status = document.getElementById('schedule-status');
+            status.innerText = 'Saving...';
+            const response = await fetch('/api/schedule', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    enabled: document.getElementById('schedule-enabled').checked,
+                    interval: document.getElementById('schedule-interval').value
+                })
+            });
+            status.innerText = response.ok ? 'Saved' : 'Save failed';
+            if (!response.ok) {
+                setTimeout(fetchData, 500);
+            }
+        }
+
         setInterval(fetchData, 4000);
         fetchData();
     </script>
@@ -320,4 +432,5 @@ if __name__ == "__main__":
     validate_portainer_url()
     if not ADMIN_USERNAME or not ADMIN_PASSWORD:
         raise RuntimeError("ADMIN_USERNAME and ADMIN_PASSWORD must be configured")
+    threading.Thread(target=scheduled_update_loop, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)

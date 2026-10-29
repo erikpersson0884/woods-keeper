@@ -15,6 +15,9 @@ ENV/
 .env.*
 instance/
 
+# Persistent runtime state
+data/*.json
+
 # Packaging and build artifacts
 *.egg-info/
 dist/

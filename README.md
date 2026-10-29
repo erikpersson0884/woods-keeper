@@ -21,6 +21,7 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
 * **Granular Redeployments**:
   * Trigger updates across all managed stacks globally.
   * Trigger manual redeployments for individual stacks directly from the Web UI.
+* **Scheduled Updates**: Enable recurring global update checks from the dashboard header.
 * **Standalone Safety**: Intelligently skips standalone containers not associated with a Docker Compose stack to prevent unexpected breakages.
 * **Live Status & Logs**: Displays real-time operation logs and execution statuses inside the browser.
 * **Multi-Arch Support**: Docker images built for `linux/amd64` and `linux/arm64` (ideal for Raspberry Pi setups).
@@ -110,6 +111,10 @@ ALLOW_INSECURE_PORTAINER_HTTP=true
 Never enable this setting when Portainer traffic can cross an untrusted network;
 the API key would be sent without transport encryption.
 
+The dashboard header includes a schedule control for global update checks. Choose
+15 minutes, 1 hour, 6 hours, or once a day. The setting is stored in the
+persistent `data` volume and is disabled by default.
+
 ---
 
 ## 📁 File Structure
@@ -169,6 +174,20 @@ authentication must not be sent over plain HTTP.
 ```
 * If `stack_id` is provided, **only** that specific stack will be redeployed.
 * If no body or an empty object `{}` is sent, a global update scan will run across all stacks.
+
+### 4. `POST /api/schedule`
+Updates the persistent global update schedule. This management endpoint requires
+the same HTTP Basic authentication as `/api/update`.
+
+```json
+{
+  "enabled": true,
+  "interval": "6h"
+}
+```
+
+Supported intervals are `15m`, `1h`, `6h`, and `daily`. Scheduled runs perform
+the same global update scan as the **Check & Update All Stacks Now** button.
 
 ---
 
