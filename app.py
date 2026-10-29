@@ -25,6 +25,7 @@ ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 ALLOW_INSECURE_PORTAINER_HTTP = (
     os.environ.get("ALLOW_INSECURE_PORTAINER_HTTP", "").lower() == "true"
 )
+PORT=int(os.environ.get("PORT", 5000))
 
 
 def validate_portainer_url():
@@ -321,4 +322,4 @@ if __name__ == "__main__":
     validate_portainer_url()
     if not ADMIN_USERNAME or not ADMIN_PASSWORD:
         raise RuntimeError("ADMIN_USERNAME and ADMIN_PASSWORD must be configured")
-    app.run(host="0.0.0.0", port=5000)
+    app.run(host="0.0.0.0", port=PORT)

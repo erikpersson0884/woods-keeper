@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-RUN pip install --no-cache-dir flask
+RUN pip install --no-cache-dir flask python-dotenv
 
 COPY app.py auto-update.sh favicon.png /app/
 RUN chmod +x /app/auto-update.sh
