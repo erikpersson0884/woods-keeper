@@ -116,6 +116,22 @@ ALLOW_INSECURE_PORTAINER_HTTP=true
 Never enable this setting when Portainer traffic can cross an untrusted network;
 the API key would be sent without transport encryption.
 
+## 🔎 SonarQube Analysis
+
+The repository includes a GitHub Actions workflow at
+`.github/workflows/sonarqube.yml`. It analyzes `app.py` and `auto-update.sh`
+on pushes to `main`, pull requests, and manual workflow runs.
+
+Configure these GitHub repository secrets before enabling the workflow:
+
+| Secret | Description |
+| :--- | :--- |
+| `SONAR_HOST_URL` | Base URL of the SonarQube server, for example `https://sonarqube.example.com` |
+| `SONAR_TOKEN` | SonarQube user or project analysis token |
+
+The workflow creates the SonarQube project key from the repository owner and
+name, for example `coolguy_woods-keeper`.
+
 The dashboard header includes a schedule control for global update checks. Choose
 15 minutes, 1 hour, 6 hours, or once a day. The setting is stored in the
 persistent `data` volume and is disabled by default.
