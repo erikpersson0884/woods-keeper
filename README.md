@@ -34,8 +34,8 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
 | Dashboard | Items |
 |---|---|
 | ![Dashboard](docs/images/homepage-visible.png) | ![Items](docs/images/login.png) |
- 
- 
+| Alternative Dashboard style | |
+| ![Dashboard](docs/images/high-tech-dashboard.png) | |
 
 
 ## 🏗️ Architecture Overview
