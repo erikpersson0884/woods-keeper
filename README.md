@@ -25,7 +25,7 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
 * **Per-Stack Global Update Control**: Exclude selected stacks from global and scheduled updates while retaining manual updates with confirmation.
 * **Standalone Safety**: Intelligently skips standalone containers not associated with a Docker Compose stack to prevent unexpected breakages.
 * **Live Status & Logs**: Displays real-time operation logs and execution statuses inside the browser.
-* **Multi-Arch Support**: Docker images built for `linux/amd64` and `linux/arm64` (ideal for Raspberry Pi setups).
+* **Raspberry Pi Support**: Docker images are built for `linux/arm64` (aarch64 Raspberry Pi OS).
 
 ---
 
