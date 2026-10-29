@@ -1,4 +1,5 @@
     let stacks = [], filter = 'all', query = '', currentData = {};
+    let hudFilter = 'all', hudHighlight = -1, hudSegmentsBuilt = 0;
     const $ = id => document.getElementById(id);
     const escapeHtml = value => String(value).replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
     const intervalText = { '15m':'15 minutes', '1h':'1 hour', '6h':'6 hours', 'daily':'day' };
@@ -11,6 +12,118 @@
 
     function toggleTheme() {
         applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
+    }
+
+    function applyStyle(style) {
+        document.documentElement.dataset.style = style;
+        localStorage.setItem('woods-keeper-style', style);
+        $('style-toggle').innerText = style === 'hud' ? 'Default style' : 'HUD style';
+    }
+
+    function toggleStyle() {
+        applyStyle(document.documentElement.dataset.style === 'hud' ? 'default' : 'hud');
+    }
+
+    function hudArc(radius, start, end) {
+        const point = angle => [
+            200 + radius * Math.cos(angle * Math.PI / 180),
+            200 + radius * Math.sin(angle * Math.PI / 180)
+        ];
+        const [x0, y0] = point(start);
+        const [x1, y1] = point(end);
+        return `M${x0.toFixed(2)} ${y0.toFixed(2)} A${radius} ${radius} 0 ${end - start > 180 ? 1 : 0} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}`;
+    }
+
+    function buildHudSegments() {
+        if (hudSegmentsBuilt === stacks.length) return;
+        const group = $('hud-segments');
+        group.innerHTML = '';
+        const step = 360 / Math.max(stacks.length, 1);
+        stacks.forEach((stack, index) => {
+            const segment = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+            segment.setAttribute('d', hudArc(172, -90 + index * step + 2, -90 + (index + 1) * step - 2));
+            segment.setAttribute('tabindex', '0');
+            segment.setAttribute('role', 'button');
+            segment.setAttribute('aria-label', `Update ${stack.name}`);
+            segment.dataset.index = index;
+            segment.addEventListener('mouseenter', () => highlightHudStack(index));
+            segment.addEventListener('focus', () => highlightHudStack(index));
+            segment.addEventListener('mouseleave', () => highlightHudStack(-1));
+            segment.addEventListener('blur', () => highlightHudStack(-1));
+            segment.addEventListener('click', () => triggerHudStackUpdate(stack));
+            segment.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    triggerHudStackUpdate(stack);
+                }
+            });
+            group.appendChild(segment);
+        });
+        hudSegmentsBuilt = stacks.length;
+    }
+
+    function highlightHudStack(index) {
+        hudHighlight = index;
+        document.querySelectorAll('.hud-dashboard .seg').forEach((segment, segmentIndex) => {
+            segment.classList.toggle('hl', segmentIndex === index);
+        });
+        document.querySelectorAll('.hud-dashboard .mod').forEach(module => {
+            module.classList.toggle('hl', Number(module.dataset.index) === index);
+        });
+        paintHudCore();
+    }
+
+    function paintHudCore() {
+        const button = $('hud-run-all');
+        if (currentData.is_running) {
+            button.innerHTML = '<span>SCANNING</span><small>Update in progress</small>';
+        } else if (hudHighlight >= 0 && stacks[hudHighlight]) {
+            const stack = stacks[hudHighlight];
+            button.innerHTML = `<span class="nm">${escapeHtml(stack.name)}</span><small>${stack.status === 'Active' ? 'online' : 'offline'}${stack.excluded ? ' · skipped' : ''}<br>click to update</small>`;
+        } else {
+            button.innerHTML = '<span>ENGAGE</span><small>Check and update<br>all stacks</small>';
+        }
+    }
+
+    function renderHud() {
+        buildHudSegments();
+        const running = stacks.filter(stack => stack.status === 'Active').length;
+        $('hud-running').innerText = running;
+        $('hud-stopped').innerText = stacks.length - running;
+        $('hud-last-run').innerText = currentData.last_run || 'Never';
+        $('hud-result').innerText = currentData.status || 'Idle';
+        $('hud-result').className = `mono ${currentData.is_running ? 'warn' : 'ok'}`;
+        $('hud-portainer-status').innerText = currentData.portainer_connected ? 'ONLINE' : 'OFFLINE';
+        $('hud-portainer-status').className = currentData.portainer_connected ? 'ok' : 'bad';
+
+        const schedule = currentData.schedule || { enabled:false, interval:'1h' };
+        const intervalText = { '15m':'15 minutes', '1h':'1 hour', '6h':'6 hours', daily:'day' };
+        $('hud-schedule-enabled').checked = schedule.enabled;
+        $('hud-schedule-interval').value = schedule.interval;
+        $('hud-schedule-interval').disabled = !schedule.enabled;
+        $('hud-next-run').innerText = schedule.enabled ? `Every ${intervalText[schedule.interval]}` : 'Not scheduled';
+
+        document.querySelectorAll('#hud-segments .seg').forEach((segment, index) => {
+            const stack = stacks[index];
+            segment.setAttribute('class', `seg ${stack.status === 'Active' ? 'run' : 'stop'}${stack.excluded ? ' skip' : ''}${currentData.is_running ? ' busy' : ''}${index === hudHighlight ? ' hl' : ''}`);
+        });
+        const visible = stacks.map((stack, index) => [stack, index]).filter(([stack]) =>
+            hudFilter === 'all' || (hudFilter === 'running') === (stack.status === 'Active')
+        );
+        $('hud-list').innerHTML = visible.map(([stack, index]) =>
+            `<div class="mod${stack.status === 'Active' ? '' : ' stopped'}${stack.excluded ? ' skipped' : ''}${index === hudHighlight ? ' hl' : ''}" data-index="${index}">
+                <span class="led"></span><span class="n">${escapeHtml(stack.name)}</span>
+                <label class="sk switch" title="Skip global updates"><span>SKIP</span><input type="checkbox" ${stack.excluded ? 'checked' : ''} data-hud-skip="${index}" aria-label="Skip global updates for ${escapeHtml(stack.name)}"><i></i></label>
+                <button class="btn" data-hud-update="${index}" ${currentData.is_running ? 'disabled' : ''}>${currentData.is_running ? '...' : 'UPDATE'}</button>
+            </div>`
+        ).join('');
+        $('hud-logs').innerHTML = (currentData.logs || []).map(log => `<span>${escapeHtml(log)}</span>`).join('\n') || 'No logs available yet.';
+        paintHudCore();
+    }
+
+    async function triggerHudStackUpdate(stack) {
+        if (stack.excluded && !confirm('This stack is excluded from global updates. Are you sure you want to update it now?')) return;
+        await triggerUpdate(stack.id);
     }
 
     function renderHealth() {
@@ -66,6 +179,7 @@
             $('global-update-btn').innerText = currentData.is_running ? 'Updating...' : 'Check and update all stacks';
             $('logs-container').innerText = (currentData.logs || []).join('\\n') || 'No logs available yet.';
             render();
+            renderHud();
         } catch (error) {
             console.error('Failed to fetch dashboard data', error);
         }
@@ -103,6 +217,40 @@
         renderStacks();
     });
     $('clear-logs').onclick = () => { $('logs-container').innerText = ''; };
+    $('hud-clear-logs').onclick = () => { $('hud-logs').innerText = ''; };
+    $('hud-run-all').onclick = () => {
+        if (hudHighlight >= 0 && stacks[hudHighlight]) triggerHudStackUpdate(stacks[hudHighlight]);
+        else triggerUpdate();
+    };
+    $('hud-filters').onclick = event => {
+        const button = event.target.closest('[data-hud-filter]');
+        if (!button) return;
+        hudFilter = button.dataset.hudFilter;
+        document.querySelectorAll('[data-hud-filter]').forEach(item => {
+            item.setAttribute('aria-pressed', item === button);
+        });
+        renderHud();
+    };
+    $('hud-list').addEventListener('click', event => {
+        const button = event.target.closest('[data-hud-update]');
+        if (button) triggerHudStackUpdate(stacks[Number(button.dataset.hudUpdate)]);
+    });
+    $('hud-list').addEventListener('change', event => {
+        const checkbox = event.target.closest('[data-hud-skip]');
+        if (checkbox) setStackExcluded(stacks[Number(checkbox.dataset.hudSkip)].id, checkbox.checked);
+    });
+    $('hud-list').addEventListener('mouseover', event => {
+        const module = event.target.closest('.mod');
+        if (module) highlightHudStack(Number(module.dataset.index));
+    });
+    $('hud-list').addEventListener('mouseleave', () => highlightHudStack(-1));
+    $('hud-schedule-enabled').onchange = saveSchedule;
+    $('hud-schedule-interval').onchange = saveSchedule;
+    setInterval(() => {
+        $('clock').innerText = new Date().toLocaleTimeString([], { hour12:false });
+    }, 1000);
+    $('clock').innerText = new Date().toLocaleTimeString([], { hour12:false });
     applyTheme(localStorage.getItem('woods-keeper-theme') || 'light');
+    applyStyle(localStorage.getItem('woods-keeper-style') || 'default');
     setInterval(fetchData, 4000);
     fetchData();

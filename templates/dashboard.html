@@ -5,11 +5,14 @@
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
     <title>Stack Manager</title>
     <link rel="icon" href="/favicon.ico" type="image/png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700&family=Rajdhani:wght@500;600&family=Share+Tech+Mono&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 
 </head>
 <body>
-<main>
+<main class="default-dashboard">
     <header class="top">
         <div>
             <h1>Stack Manager</h1>
@@ -17,6 +20,7 @@
         </div>
         <div class="header-actions">
             <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()">Dark mode</button>
+            <button class="style-toggle" id="style-toggle" type="button" onclick="toggleStyle()">HUD style</button>
             <form method="post" action="/logout">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="logout" type="submit">Sign out</button>
@@ -59,6 +63,75 @@
     <section class="panel" aria-label="Execution logs">
         <div class="logs-head"><h2>Execution logs</h2><button class="link" id="clear-logs">Clear</button></div>
         <pre id="logs-container" aria-live="polite">No logs available yet.</pre>
+    </section>
+</main>
+<main class="hud-dashboard">
+    <header>
+        <div>
+            <h1>STACK COMMAND</h1>
+            <div class="sub">Portainer link <b id="hud-portainer-status">CONNECTING</b></div>
+        </div>
+        <div class="hud-header-actions">
+            <div id="clock">--:--:--</div>
+            <button class="hud-control" type="button" onclick="toggleTheme()">THEME</button>
+            <button class="hud-control" type="button" onclick="toggleStyle()">DEFAULT</button>
+            <form method="post" action="/logout">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <button class="hud-control" type="submit">LOGOUT</button>
+            </form>
+        </div>
+    </header>
+
+    <div class="hud">
+        <section class="hud-panel panel" aria-label="Telemetry">
+            <h2>TELEMETRY</h2>
+            <div class="stats">
+                <div class="stat"><div class="big ok" id="hud-running">0</div><small>Running</small></div>
+                <div class="stat"><div class="big bad" id="hud-stopped">0</div><small>Stopped</small></div>
+            </div>
+            <div class="row"><span>Last global run</span><span class="mono" id="hud-last-run">Never</span></div>
+            <div class="row"><span>Result</span><span class="mono ok" id="hud-result">Idle</span></div>
+            <div class="row"><span>Next run</span><span class="mono" id="hud-next-run">Not scheduled</span></div>
+            <div class="hud-schedule">
+                <label class="switch"><input type="checkbox" id="hud-schedule-enabled"><i></i>Run on a schedule</label>
+                <select id="hud-schedule-interval" aria-label="Schedule frequency">
+                    <option value="15m">Every 15 minutes</option>
+                    <option value="1h">Every hour</option>
+                    <option value="6h">Every 6 hours</option>
+                    <option value="daily">Every day</option>
+                </select>
+            </div>
+            <h2 class="activity-title">LINK ACTIVITY</h2>
+            <svg class="wave" viewBox="0 0 240 56" preserveAspectRatio="none" aria-hidden="true"><polyline id="hud-wave" points=""></polyline></svg>
+        </section>
+
+        <section class="order1" aria-label="Stack ring">
+            <div class="core" id="hud-core">
+                <svg viewBox="0 0 400 400" aria-hidden="false">
+                    <circle cx="200" cy="200" r="192" fill="none" stroke="var(--line)" stroke-width="1"/>
+                    <circle class="spin" cx="200" cy="200" r="150" fill="none" stroke="var(--cy)" stroke-opacity=".55" stroke-width="6" stroke-dasharray="2 7"/>
+                    <circle class="spin rev" cx="200" cy="200" r="138" fill="none" stroke="var(--cy)" stroke-opacity=".4" stroke-width="1.5" stroke-dasharray="60 20 8 20"/>
+                    <circle cx="200" cy="200" r="104" fill="none" stroke="var(--line)" stroke-width="1"/>
+                    <g id="hud-segments"></g>
+                </svg>
+                <button class="eng" id="hud-run-all"><span>ENGAGE</span><small>Check and update<br>all stacks</small></button>
+            </div>
+        </section>
+
+        <section class="hud-panel panel" aria-label="Stacks">
+            <h2>STACK MODULES</h2>
+            <div class="filters" id="hud-filters">
+                <button data-hud-filter="all" aria-pressed="true">ALL</button>
+                <button data-hud-filter="running" aria-pressed="false">ONLINE</button>
+                <button data-hud-filter="stopped" aria-pressed="false">OFFLINE</button>
+            </div>
+            <div class="list" id="hud-list"></div>
+        </section>
+    </div>
+
+    <section class="hud-panel panel" aria-label="Execution logs">
+        <div class="lh"><h2>EXECUTION LOG</h2><button id="hud-clear-logs">CLEAR</button></div>
+        <pre id="hud-logs" aria-live="polite"></pre>
     </section>
 </main>
     <script>
