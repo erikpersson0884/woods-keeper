@@ -10,7 +10,7 @@
 Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides a sleek web interface for tracking stack statuses and manually initiating individual or global stack redeployments.
 
 
-![Homepage](docs/homepage.png)
+![Homepage](docs/images/homepage.png)
 
 ---
 
@@ -28,6 +28,15 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
 * **Multi-Arch Support**: Docker images built for `linux/amd64` and `linux/arm64` (ideal for Raspberry Pi setups).
 
 ---
+
+## 🖼️ Screenshots
+
+| Dashboard | Items |
+|---|---|
+| ![Dashboard](docs/images/homepage-visible.png) | ![Items](docs/images/login.png) |
+ 
+ 
+
 
 ## 🏗️ Architecture Overview
 
