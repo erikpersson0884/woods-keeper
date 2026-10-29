@@ -118,12 +118,10 @@ def run_update_process(stack_id=None):
     try:
         cmd = ["./auto-update.sh"]
         if stack_id:
-            # If a specific stack ID is passed, we can target it or pass it as an arg if script supports it.
-            # Here we can run the global auto-updater or trigger a specific stack update script call.
-            pass
+            cmd.append(str(stack_id))
 
         process = subprocess.Popen(
-            ["./auto-update.sh"],
+            cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             text=True

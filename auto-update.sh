@@ -7,6 +7,8 @@ flock -n 9 || exit 0
 
 log() { echo "$(date '+%F %T') $*"; }
 
+TARGET_STACK_ID="${1:-}"
+
 if [[ "${PORTAINER_URL:-}" != https://* ]] \
   && { [[ "${PORTAINER_URL:-}" != http://* ]] \
     || [[ "${ALLOW_INSECURE_PORTAINER_HTTP:-}" != "true" ]]; }; then
@@ -19,6 +21,39 @@ is_latest() {
   local name="${1##*/}"
   [[ "$name" != *:* || "$name" == *:latest ]]
 }
+
+redeploy_stack() {
+  local id="$1"
+  local stack
+  local ep
+  local file
+  local env
+
+  stack=$(curl -fsS -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id")
+  ep=$(echo "$stack" | jq -r '.EndpointId')
+  if [[ -z "$ep" || "$ep" == "null" ]]; then
+    log "stack $id has no endpoint, skipping"
+    return 1
+  fi
+
+  log "redeploying stack $id (endpoint $ep)"
+
+  file=$(curl -fsS -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id/file" \
+    | jq -r '.StackFileContent')
+  env=$(echo "$stack" | jq '.Env // []')
+
+  jq -n --arg f "$file" --argjson env "$env" \
+    '{stackFileContent: $f, env: $env, prune: false, pullImage: true}' \
+    | curl -fsS -X PUT "$PORTAINER_URL/api/stacks/$id?endpointId=$ep" \
+      -H "X-API-Key: $API_KEY" \
+      -H "Content-Type: application/json" \
+      -d @- | jq '{Id, Name, Status}'
+}
+
+if [[ -n "$TARGET_STACK_ID" ]]; then
+  redeploy_stack "$TARGET_STACK_ID"
+  exit $?
+fi
 
 PULLED_IMAGES=""
 STACK_PROJECTS=""
@@ -69,16 +104,5 @@ for project in $STACK_PROJECTS; do
     continue
   fi
   
-  log "redeploying $project (stack $id, endpoint $ep)"
-  
-  STACK=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id")
-  FILE=$(curl -s -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id/file" | jq -r '.StackFileContent')
-  ENV=$(echo "$STACK" | jq '.Env // []')
-
-  jq -n --arg f "$FILE" --argjson env "$ENV" \
-    '{stackFileContent: $f, env: $env, prune: false, pullImage: true}' \
-  | curl -s -X PUT "$PORTAINER_URL/api/stacks/$id?endpointId=$ep" \
-    -H "X-API-Key: $API_KEY" \
-    -H "Content-Type: application/json" \
-    -d @- | jq '{Id, Name, Status}'
+  redeploy_stack "$id"
 done
