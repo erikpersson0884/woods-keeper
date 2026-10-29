@@ -284,6 +284,10 @@ HTML_TEMPLATE = """
         .badge.Success { background: #166534; color: #4ade80; }
         .badge.Failed { background: #991b1b; color: #fca5a5; }
         .badge.Updating\.\.\. { background: #854d0e; color: #fde047; }
+        .stack-status { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.04em; }
+        .stack-status.running { background: #14532d; color: #86efac; }
+        .stack-status.stopped { background: #450a0a; color: #fca5a5; }
+        .status-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
         .schedule { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
         .schedule select, .schedule button { padding: 8px; border-radius: 6px; border: 1px solid #475569; }
         .schedule select { background: #0f172a; color: #f8fafc; }
@@ -321,7 +325,7 @@ HTML_TEMPLATE = """
             <thead>
                 <tr>
                     <th>Stack Name</th>
-                    <th>Status</th>
+                    <th>Stack status</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -377,7 +381,12 @@ HTML_TEMPLATE = """
                     tbody.innerHTML = data.stacks.map(s => `
                         <tr>
                             <td><strong>${s.name}</strong></td>
-                            <td>${s.status}</td>
+                            <td>
+                                <span class="stack-status ${s.status === 'Active' ? 'running' : 'stopped'}">
+                                    <span class="status-dot"></span>
+                                    ${s.status === 'Active' ? 'RUNNING' : 'STOPPED'}
+                                </span>
+                            </td>
                             <td><button onclick="triggerUpdate(${s.id})" ${data.is_running ? 'disabled' : ''}>Update Stack</button></td>
                         </tr>
                     `).join('');
