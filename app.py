@@ -29,8 +29,10 @@ from storage import (
     SCHEDULE_INTERVALS,
     load_schedule,
     load_status,
+    load_webhook_mappings,
     save_schedule,
     save_status,
+    save_webhook_mappings,
 )
 
 app = Flask(__name__)
@@ -199,6 +201,9 @@ def run_update_process(stack_id=None):
 
 
 def _github_stack_mapping():
+    configured = load_webhook_mappings()
+    if configured:
+        return configured
     if not GITHUB_WEBHOOK_STACKS:
         return {}
     try:
@@ -208,6 +213,13 @@ def _github_stack_mapping():
     if not isinstance(mapping, dict):
         return {}
     return {str(repository): str(stack_id) for repository, stack_id in mapping.items()}
+
+
+def _webhook_stack_mapping_for_ui():
+    return {
+        str(stack_id): repository
+        for repository, stack_id in _github_stack_mapping().items()
+    }
 
 
 def _valid_github_signature(payload, signature):
@@ -261,7 +273,8 @@ def api_data():
         "schedule": schedule,
         "portainer_connected": portainer_error is None,
         "portainer_error": portainer_error,
-        "stacks": stack_list
+        "stacks": stack_list,
+        "webhook_repositories": _webhook_stack_mapping_for_ui(),
     })
 
 @app.route("/api/update", methods=["POST"])
@@ -277,6 +290,37 @@ def trigger_update():
     thread = threading.Thread(target=run_update_process, args=(stack_id,))
     thread.start()
     return jsonify({"message": "Update triggered successfully"})
+
+
+@app.route("/api/webhook-settings", methods=["POST"])
+@requires_admin_auth
+@csrf_protected
+def update_webhook_settings():
+    data = request.get_json() or {}
+    stack_id = data.get("stack_id")
+    repository = str(data.get("repository", "")).strip()
+    if stack_id is None:
+        return jsonify({"error": "stack_id is required"}), 400
+    if repository and (
+        repository.count("/") != 1
+        or any(not part for part in repository.split("/"))
+    ):
+        return jsonify({"error": "repository must be in owner/name format"}), 400
+
+    mappings = _github_stack_mapping()
+    stack_id = str(stack_id)
+    mappings = {
+        configured_repository: configured_stack_id
+        for configured_repository, configured_stack_id in mappings.items()
+        if configured_stack_id != stack_id and configured_repository != repository
+    }
+    if repository:
+        mappings[repository] = stack_id
+    save_webhook_mappings(mappings)
+    return jsonify({
+        "stack_id": stack_id,
+        "repository": repository,
+    })
 
 
 @app.route("/api/webhooks/github", methods=["POST"])

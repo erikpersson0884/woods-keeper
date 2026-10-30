@@ -3,6 +3,7 @@ import os
 
 STATUS_FILE = "data/status.json"
 SCHEDULE_FILE = "data/schedule.json"
+WEBHOOK_FILE = "data/webhooks.json"
 SCHEDULE_INTERVALS = {
     "15m": 15 * 60,
     "1h": 60 * 60,
@@ -54,3 +55,25 @@ def save_schedule(schedule):
     os.makedirs(os.path.dirname(SCHEDULE_FILE), exist_ok=True)
     with open(SCHEDULE_FILE, "w") as f:
         json.dump(schedule, f)
+
+
+def load_webhook_mappings():
+    if os.path.exists(WEBHOOK_FILE):
+        try:
+            with open(WEBHOOK_FILE, "r") as f:
+                mappings = json.load(f)
+            if isinstance(mappings, dict):
+                return {
+                    str(repository): str(stack_id)
+                    for repository, stack_id in mappings.items()
+                    if isinstance(repository, str) and repository
+                }
+        except (OSError, json.JSONDecodeError):
+            pass
+    return {}
+
+
+def save_webhook_mappings(mappings):
+    os.makedirs(os.path.dirname(WEBHOOK_FILE), exist_ok=True)
+    with open(WEBHOOK_FILE, "w") as f:
+        json.dump(mappings, f)
