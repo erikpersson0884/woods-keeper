@@ -25,7 +25,7 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
 * **Per-Stack Global Update Control**: Exclude selected stacks from global and scheduled updates while retaining manual updates with confirmation.
 * **GitHub Actions Deployments**: Trigger a mapped Portainer stack after a successful, signed image-build workflow.
 * **Standalone Safety**: Intelligently skips standalone containers not associated with a Docker Compose stack to prevent unexpected breakages.
-* **Live Status & Logs**: Displays real-time operation logs and execution statuses inside the browser.
+* **Live Status & Logs**: Displays persistent, color-coded operation logs and execution statuses inside the browser. The latest 1,000 log lines are retained.
 * **Raspberry Pi Support**: Docker images are built for `linux/arm64` (aarch64 Raspberry Pi OS).
 
 ---

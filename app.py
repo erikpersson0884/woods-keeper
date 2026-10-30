@@ -125,6 +125,18 @@ def is_authenticated():
 is_running = False
 schedule_lock = threading.Lock()
 schedule_wakeup = threading.Event()
+status_lock = threading.Lock()
+
+
+def append_log(message):
+    with status_lock:
+        status_data = load_status()
+        logs = status_data.get("logs", [])
+        if not isinstance(logs, list):
+            logs = []
+        logs.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {message}")
+        status_data["logs"] = logs[-1000:]
+        save_status(status_data)
 
 
 def scheduled_update_loop():
@@ -162,11 +174,20 @@ def run_update_process(stack_id=None):
     if is_running:
         return
     is_running = True
+    output_lines = []
+    final_status = "Failed"
 
-    status_data = load_status()
-    status_data["status"] = "Updating..."
-    status_data["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    save_status(status_data)
+    with status_lock:
+        status_data = load_status()
+        logs = status_data.get("logs", [])
+        if not isinstance(logs, list):
+            logs = []
+        status_data["status"] = "Updating..."
+        status_data["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        target = f"stack {stack_id}" if stack_id else "all stacks"
+        logs.extend(["", f"--- update started: {status_data['last_run']} ({target}) ---"])
+        status_data["logs"] = logs[-1000:]
+        save_status(status_data)
 
     try:
         cmd = ["./auto-update.sh"]
@@ -190,14 +211,22 @@ def run_update_process(stack_id=None):
         )
         output, _ = process.communicate()
 
-        status_data["logs"] = output.strip().split("\n") if output else ["Update completed."]
-        status_data["status"] = "Success" if process.returncode == 0 else "Failed"
+        output_lines = output.splitlines() if output else ["Update completed."]
+        final_status = "Success" if process.returncode == 0 else "Failed"
     except Exception as e:
-        status_data["status"] = f"Error: {str(e)}"
-        status_data["logs"].append(f"Execution Error: {str(e)}")
+        final_status = f"Error: {str(e)}"
+        output_lines.append(f"Execution Error: {str(e)}")
 
-    is_running = False
-    save_status(status_data)
+    with status_lock:
+        is_running = False
+        latest_status = load_status()
+        latest_logs = latest_status.get("logs", [])
+        if not isinstance(latest_logs, list):
+            latest_logs = []
+        latest_status["last_run"] = status_data["last_run"]
+        latest_status["status"] = final_status
+        latest_status["logs"] = (latest_logs + output_lines)[-1000:]
+        save_status(latest_status)
 
 
 def _github_stack_mapping():
@@ -328,18 +357,23 @@ def github_webhook():
     payload = request.get_data()
     signature = request.headers.get("X-Hub-Signature-256", "")
     if not _valid_github_signature(payload, signature):
+        append_log("GitHub webhook rejected: invalid signature")
         return jsonify({"error": "Invalid webhook signature"}), 401
 
     if request.headers.get("X-GitHub-Event") != "workflow_run":
+        append_log("GitHub webhook ignored: unsupported event")
         return jsonify({"message": "Event ignored"}), 202
 
     try:
         data = json.loads(payload)
     except json.JSONDecodeError:
+        append_log("GitHub webhook rejected: invalid JSON payload")
         return jsonify({"error": "Invalid JSON payload"}), 400
 
     workflow_run = data.get("workflow_run")
     repository = data.get("repository", {}).get("full_name")
+    if repository:
+        append_log(f"GitHub webhook received for {repository}")
     if (
         data.get("action") != "completed"
         or not isinstance(workflow_run, dict)
@@ -347,21 +381,26 @@ def github_webhook():
         or not repository
         or not workflow_run.get("head_sha")
     ):
+        append_log("GitHub webhook ignored: workflow run did not qualify")
         return jsonify({"message": "Workflow run did not qualify for deployment"}), 202
 
     if (
         not GITHUB_WEBHOOK_WORKFLOW_NAME
         or workflow_run.get("name") != GITHUB_WEBHOOK_WORKFLOW_NAME
     ):
+        append_log(f"GitHub webhook ignored for {repository}: workflow is not an image build workflow")
         return jsonify({"message": "Workflow is not an image build workflow"}), 202
 
     stack_id = _github_stack_mapping().get(repository)
     if not stack_id:
+        append_log(f"GitHub webhook ignored for {repository}: repository is not mapped to a stack")
         return jsonify({"message": "Repository is not mapped to a stack"}), 202
 
     if is_running:
+        append_log(f"GitHub webhook rejected for {repository}: update already in progress")
         return jsonify({"error": "Update already in progress"}), 409
 
+    append_log(f"GitHub webhook accepted for {repository}; deploying stack {stack_id}")
     thread = threading.Thread(target=run_update_process, args=(stack_id,))
     thread.start()
     return jsonify({

@@ -63,6 +63,14 @@ select:disabled { opacity:.5; }
 .logs-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
 .link { background:none; border:0; color:var(--muted); text-decoration:underline; padding:0; }
 pre { margin:0; background:var(--term); color:var(--term-ink); border-radius:10px; padding:16px; font:13px/1.7 "IBM Plex Mono", ui-monospace, monospace; max-height:260px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
+.log-line { display:block; min-height:1.7em; }
+.log-run { color:#b9a7ff; font-weight:600; border-bottom:1px solid #554b78; margin:4px 0; }
+.log-info { color:#b9c7d9; }
+.log-success { color:#69e6a1; }
+.log-warn { color:#ffd166; }
+.log-error { color:#ff7b83; }
+.log-json { color:#83d9ff; }
+.log-empty { color:#78879c; }
 @media (max-width:720px) { .grid { grid-template-columns:1fr; } .run { grid-template-columns:1fr; } .run .primary { justify-content:center; } }
 
 /* HUD skin */

@@ -31,23 +31,26 @@ redeploy_stack() {
 
   stack=$(curl -fsS -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id")
   ep=$(echo "$stack" | jq -r '.EndpointId')
+  name=$(echo "$stack" | jq -r '.Name // "unknown"')
   if [[ -z "$ep" || "$ep" == "null" ]]; then
     log "stack $id has no endpoint, skipping"
     return 1
   fi
 
-  log "redeploying stack $id (endpoint $ep)"
+  log "redeploying stack $name (id $id, endpoint $ep)"
 
   file=$(curl -fsS -H "X-API-Key: $API_KEY" "$PORTAINER_URL/api/stacks/$id/file" \
     | jq -r '.StackFileContent')
   env=$(echo "$stack" | jq '.Env // []')
 
-  jq -n --arg f "$file" --argjson env "$env" \
+  result=$(jq -n --arg f "$file" --argjson env "$env" \
     '{stackFileContent: $f, env: $env, prune: false, pullImage: true}' \
     | curl -fsS -X PUT "$PORTAINER_URL/api/stacks/$id?endpointId=$ep" \
       -H "X-API-Key: $API_KEY" \
       -H "Content-Type: application/json" \
-      -d @- | jq '{Id, Name, Status}'
+      -d @-)
+  status=$(echo "$result" | jq -r '.Status // "unknown"')
+  log "stack $name ($id) redeployed on endpoint $ep (status: $status)"
 }
 
 is_excluded_stack() {

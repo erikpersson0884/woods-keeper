@@ -2,6 +2,20 @@
     let hudFilter = 'all', hudHighlight = -1, hudSegmentsBuilt = 0;
     const $ = id => document.getElementById(id);
     const escapeHtml = value => String(value).replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
+    const logClass = line => {
+        const text = String(line).toLowerCase();
+        if (text.startsWith('---')) return 'log-run';
+        if (text.includes('error') || text.includes('failed')) return 'log-error';
+        if (text.includes('warning') || text.includes('warn') || text.includes('skipping') || text.includes('already in progress')) return 'log-warn';
+        if (text.includes('success') || text.includes('updated') || text.includes('redeploying')) return 'log-success';
+        if (text.startsWith('{') || text.startsWith('}') || text.startsWith('"')) return 'log-json';
+        return 'log-info';
+    };
+    const renderLogs = (element, logs) => {
+        element.innerHTML = logs.length
+            ? logs.map(line => `<span class="log-line ${logClass(line)}">${escapeHtml(line)}</span>`).join('')
+            : '<span class="log-empty">No logs available yet.</span>';
+    };
     const intervalText = { '15m':'15 minutes', '1h':'1 hour', '6h':'6 hours', 'daily':'day' };
 
     function applyTheme(theme) {
@@ -117,7 +131,7 @@
                 <button class="btn" data-hud-update="${index}" ${currentData.is_running ? 'disabled' : ''}>${currentData.is_running ? '...' : 'UPDATE'}</button>
             </div>`
         ).join('');
-        $('hud-logs').innerHTML = (currentData.logs || []).map(log => `<span>${escapeHtml(log)}</span>`).join('\n') || 'No logs available yet.';
+        renderLogs($('hud-logs'), currentData.logs || []);
         paintHudCore();
     }
 
@@ -181,7 +195,7 @@
             badge.className = `badge${currentData.is_running ? ' busy' : ''}`;
             $('global-update-btn').disabled = currentData.is_running;
             $('global-update-btn').innerText = currentData.is_running ? 'Updating...' : 'Check and update all stacks';
-            $('logs-container').innerText = (currentData.logs || []).join('\\n') || 'No logs available yet.';
+            renderLogs($('logs-container'), currentData.logs || []);
             render();
             renderHud();
         } catch (error) {
