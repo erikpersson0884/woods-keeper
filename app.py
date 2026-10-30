@@ -18,7 +18,6 @@ from config import (
     API_KEY,
     GITHUB_WEBHOOK_SECRET,
     GITHUB_WEBHOOK_STACKS,
-    GITHUB_WEBHOOK_WORKFLOW_NAME,
     PORT,
     PORTAINER_URL,
     SECRET_KEY,
@@ -360,7 +359,8 @@ def github_webhook():
         append_log("GitHub webhook rejected: invalid signature")
         return jsonify({"error": "Invalid webhook signature"}), 401
 
-    if request.headers.get("X-GitHub-Event") != "workflow_run":
+    github_event = request.headers.get("X-GitHub-Event")
+    if github_event not in {"package", "registry_package"}:
         append_log("GitHub webhook ignored: unsupported event")
         return jsonify({"message": "Event ignored"}), 202
 
@@ -370,26 +370,35 @@ def github_webhook():
         append_log("GitHub webhook rejected: invalid JSON payload")
         return jsonify({"error": "Invalid JSON payload"}), 400
 
-    workflow_run = data.get("workflow_run")
     repository = data.get("repository", {}).get("full_name")
     if repository:
         append_log(f"GitHub webhook received for {repository}")
+    package = data.get("package")
+    package_version = package.get("package_version", {}) if isinstance(package, dict) else {}
+    container_metadata = (
+        package_version.get("container_metadata", {})
+        if isinstance(package_version, dict)
+        else {}
+    )
+    package_name = package.get("name", "unknown") if isinstance(package, dict) else "unknown"
+    package_type = package.get("package_type") if isinstance(package, dict) else None
+    package_tag = (
+        container_metadata.get("tag", "unknown")
+        if isinstance(container_metadata, dict)
+        else "unknown"
+    )
     if (
-        data.get("action") != "completed"
-        or not isinstance(workflow_run, dict)
-        or workflow_run.get("conclusion") != "success"
+        data.get("action") not in {"published", "updated"}
+        or not isinstance(package, dict)
+        or package_type != "container"
         or not repository
-        or not workflow_run.get("head_sha")
     ):
-        append_log("GitHub webhook ignored: workflow run did not qualify")
-        return jsonify({"message": "Workflow run did not qualify for deployment"}), 202
-
-    if (
-        not GITHUB_WEBHOOK_WORKFLOW_NAME
-        or workflow_run.get("name") != GITHUB_WEBHOOK_WORKFLOW_NAME
-    ):
-        append_log(f"GitHub webhook ignored for {repository}: workflow is not an image build workflow")
-        return jsonify({"message": "Workflow is not an image build workflow"}), 202
+        append_log("GitHub webhook ignored: event was not a container package publication")
+        return jsonify({"message": "Container package event did not qualify for deployment"}), 202
+    append_log(
+        f"GitHub package {data['action']} for {repository}: "
+        f"{package_name}:{package_tag}"
+    )
 
     stack_id = _github_stack_mapping().get(repository)
     if not stack_id:
@@ -407,7 +416,8 @@ def github_webhook():
         "message": "Stack deployment triggered",
         "repository": repository,
         "stack_id": stack_id,
-        "commit": workflow_run["head_sha"],
+        "package": package_name,
+        "tag": package_tag,
     }), 202
 
 

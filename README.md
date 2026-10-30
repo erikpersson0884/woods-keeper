@@ -116,7 +116,6 @@ API key and dashboard password.
 | `ADMIN_PASSWORD` | **Yes** | *None* | Strong password required for HTTP Basic authentication on update requests. |
 | `GITHUB_WEBHOOK_SECRET` | **Yes for webhook deployments** | *None* | Secret used to verify GitHub's `X-Hub-Signature-256` header. |
 | `GITHUB_WEBHOOK_STACKS` | No | *None* | Optional initial JSON mapping of repository full names to Portainer stack IDs. Dashboard-saved mappings take over, for example `{"owner/repository":"2"}`. |
-| `GITHUB_WEBHOOK_WORKFLOW_NAME` | **Yes for webhook deployments** | *None* | Exact name of the successful GitHub Actions workflow allowed to deploy. |
 
 `PORTAINER_URL` must use HTTPS by default. To connect to an internal Portainer
 HTTP endpoint, explicitly set:
@@ -240,36 +239,33 @@ manually requires confirmation before Portainer pulls new images.
 
 ### 5. `POST /api/webhooks/github`
 
-Receives a GitHub `workflow_run` webhook and asynchronously redeploys the
-Portainer stack mapped to the repository. Configure the mapping from the
+Receives a GitHub `package` or `registry_package` webhook and asynchronously redeploys the
+Portainer stack mapped to the repository when a container image is published
+or updated. Configure the mapping from the
 **GitHub repository** field on each stack card in the dashboard. The endpoint
 does not use dashboard authentication; it requires a valid
 `X-Hub-Signature-256` generated with `GITHUB_WEBHOOK_SECRET`.
 
 Only the following events are accepted for deployment:
 
-* `X-GitHub-Event: workflow_run`
-* `action` is `completed`
-* `workflow_run.conclusion` is `success`
-* `workflow_run.name` exactly matches `GITHUB_WEBHOOK_WORKFLOW_NAME`
+* `X-GitHub-Event: package` or `registry_package`
+* `action` is `published` or `updated`
+* `package.package_type` is `container`
 * `repository.full_name` has been assigned to a stack in the dashboard
-* `workflow_run.head_sha` is present
 
 Configure the GitHub repository webhook as follows:
 
 1. Set the Payload URL to `https://your-woods-keeper-host/api/webhooks/github`.
 2. Select `application/json`.
 3. Set the same random secret as `GITHUB_WEBHOOK_SECRET`.
-4. Select **Let me select individual events**, then enable **Workflow runs**.
-5. In the image-build workflow, ensure the workflow name matches
-   `GITHUB_WEBHOOK_WORKFLOW_NAME`.
+4. Select **Let me select individual events**, then enable **Registry packages**
+   (or **Packages** if that is the event GitHub shows for your registry).
 
-GitHub's standard `workflow_run` payload does not contain the image digest.
-This endpoint therefore verifies the successful, explicitly named image-build
-workflow and its commit SHA, then asks Portainer to pull the configured stack's
-images. If digest-level verification is required, use a custom
-`repository_dispatch` contract carrying the digest and verify it against the
-registry before deploying.
+Woods Keeper does not need to know the workflow name. Any workflow or process
+that publishes or updates a container package can trigger the mapped stack.
+The package event identifies the repository, package name, and tag, then
+Portainer is asked to pull the configured stack's images. If digest-level
+verification is required, it should be added separately before deploying.
 
 ---
 
