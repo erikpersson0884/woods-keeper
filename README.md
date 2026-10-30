@@ -273,6 +273,15 @@ verification is required, it should be added separately before deploying.
 
 ## 🔨 Local Development & Building
 
+Run the unit tests from the repository root with:
+
+```bash
+python3 -m unittest discover -s tests -v
+```
+
+The tests cover signed GitHub package webhooks, automatic GHCR repository
+detection, ambiguous repository matches, and persistent update logs.
+
 To build the image locally on your machine or Raspberry Pi:
 
 ```bash
