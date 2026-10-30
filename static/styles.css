@@ -53,9 +53,8 @@ select:disabled { opacity:.5; }
 .state { font-size:13px; color:var(--muted); margin-left:17px; }
 .stack-card.stopped h3 .dot { background:var(--off); }
 .stack-card .skip { grid-column:1/-1; font-size:13px; color:var(--muted); padding-top:10px; border-top:1px solid var(--line); justify-content:space-between; display:flex; width:100%; }
-.webhook-setting { grid-column:1/-1; display:grid; gap:4px; font-size:13px; color:var(--muted); }
-.webhook-setting input { width:100%; font:inherit; color:var(--ink); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:6px 9px; }
-.webhook-save { grid-column:2; justify-self:end; font-size:13px; }
+.webhook-setting { grid-column:1/-1; display:flex; justify-content:space-between; gap:10px; font-size:13px; color:var(--muted); padding-top:10px; border-top:1px solid var(--line); }
+.webhook-setting code { color:var(--ink); overflow-wrap:anywhere; text-align:right; }
 .stack-card.skipped { opacity:.7; }
 .ghost { border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:8px; padding:6px 14px; font-weight:500; display:inline-flex; gap:8px; align-items:center; }
 .ghost:hover { border-color:var(--accent); color:var(--accent); }

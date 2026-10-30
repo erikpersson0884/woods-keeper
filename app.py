@@ -5,6 +5,7 @@ import threading
 import base64
 import binascii
 import hmac
+import re
 import secrets
 from datetime import datetime
 from functools import wraps
@@ -17,7 +18,6 @@ from config import (
     ADMIN_USERNAME,
     API_KEY,
     GITHUB_WEBHOOK_SECRET,
-    GITHUB_WEBHOOK_STACKS,
     PORT,
     PORTAINER_URL,
     SECRET_KEY,
@@ -28,10 +28,8 @@ from storage import (
     SCHEDULE_INTERVALS,
     load_schedule,
     load_status,
-    load_webhook_mappings,
     save_schedule,
     save_status,
-    save_webhook_mappings,
 )
 
 app = Flask(__name__)
@@ -228,26 +226,35 @@ def run_update_process(stack_id=None):
         save_status(latest_status)
 
 
-def _github_stack_mapping():
-    configured = load_webhook_mappings()
-    if configured:
-        return configured
-    if not GITHUB_WEBHOOK_STACKS:
-        return {}
+def _stack_repositories(stack_id):
     try:
-        mapping = json.loads(GITHUB_WEBHOOK_STACKS)
-    except json.JSONDecodeError:
-        return {}
-    if not isinstance(mapping, dict):
-        return {}
-    return {str(repository): str(stack_id) for repository, stack_id in mapping.items()}
+        req = urllib.request.Request(
+            f"{PORTAINER_URL}/api/stacks/{stack_id}/file",
+            headers={"X-API-Key": API_KEY},
+        )
+        with urllib.request.urlopen(req, timeout=10) as response:
+            stack_file = json.loads(response.read().decode()).get("StackFileContent", "")
+    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, UnicodeDecodeError):
+        return set()
+
+    repositories = set()
+    for image in re.findall(r"(?m)^\s*image:\s*[\"']?([^\"'\s#]+)", stack_file):
+        image = image.split("@", 1)[0].split(":", 1)[0]
+        parts = image.split("/")
+        if len(parts) >= 3 and parts[0].lower() == "ghcr.io":
+            repositories.add("/".join(parts[1:]))
+    return repositories
 
 
-def _webhook_stack_mapping_for_ui():
-    return {
-        str(stack_id): repository
-        for repository, stack_id in _github_stack_mapping().items()
-    }
+def _github_stack_mapping(stacks):
+    mappings = {}
+    for stack in stacks:
+        stack_id = stack.get("Id")
+        if stack_id is None:
+            continue
+        for repository in _stack_repositories(stack_id):
+            mappings[repository] = str(stack_id)
+    return mappings
 
 
 def _valid_github_signature(payload, signature):
@@ -285,12 +292,16 @@ def api_data():
     
     stack_list = []
     for s in stacks:
+        stack_id = s.get("Id")
         stack_list.append({
-            "id": s.get("Id"),
+            "id": stack_id,
             "name": s.get("Name"),
             "endpoint_id": s.get("EndpointId"),
             "status": "Active" if s.get("Status") == 1 else "Inactive",
             "excluded": str(s.get("Id")) in schedule["excluded_stack_ids"],
+            "webhook_repository": next(
+                iter(_stack_repositories(stack_id)), None
+            ) if stack_id is not None else None,
         })
 
     return jsonify({
@@ -302,7 +313,6 @@ def api_data():
         "portainer_connected": portainer_error is None,
         "portainer_error": portainer_error,
         "stacks": stack_list,
-        "webhook_repositories": _webhook_stack_mapping_for_ui(),
     })
 
 @app.route("/api/update", methods=["POST"])
@@ -318,37 +328,6 @@ def trigger_update():
     thread = threading.Thread(target=run_update_process, args=(stack_id,))
     thread.start()
     return jsonify({"message": "Update triggered successfully"})
-
-
-@app.route("/api/webhook-settings", methods=["POST"])
-@requires_admin_auth
-@csrf_protected
-def update_webhook_settings():
-    data = request.get_json() or {}
-    stack_id = data.get("stack_id")
-    repository = str(data.get("repository", "")).strip()
-    if stack_id is None:
-        return jsonify({"error": "stack_id is required"}), 400
-    if repository and (
-        repository.count("/") != 1
-        or any(not part for part in repository.split("/"))
-    ):
-        return jsonify({"error": "repository must be in owner/name format"}), 400
-
-    mappings = _github_stack_mapping()
-    stack_id = str(stack_id)
-    mappings = {
-        configured_repository: configured_stack_id
-        for configured_repository, configured_stack_id in mappings.items()
-        if configured_stack_id != stack_id and configured_repository != repository
-    }
-    if repository:
-        mappings[repository] = stack_id
-    save_webhook_mappings(mappings)
-    return jsonify({
-        "stack_id": stack_id,
-        "repository": repository,
-    })
 
 
 @app.route("/api/webhooks/github", methods=["POST"])
@@ -400,7 +379,12 @@ def github_webhook():
         f"{package_name}:{package_tag}"
     )
 
-    stack_id = _github_stack_mapping().get(repository)
+    stacks, portainer_error = get_portainer_stacks()
+    stack_id = (
+        _github_stack_mapping(stacks).get(repository)
+        if portainer_error is None
+        else None
+    )
     if not stack_id:
         append_log(f"GitHub webhook ignored for {repository}: repository is not mapped to a stack")
         return jsonify({"message": "Repository is not mapped to a stack"}), 202

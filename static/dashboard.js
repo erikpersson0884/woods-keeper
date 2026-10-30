@@ -163,10 +163,9 @@
                 <label class="skip switch">Skip global updates
                     <input type="checkbox" ${s.excluded ? 'checked' : ''} onchange="setStackExcluded(${s.id}, this.checked)"><i></i>
                 </label>
-                <label class="webhook-setting">GitHub repository
-                    <input type="text" value="${escapeHtml((currentData.webhook_repositories || {})[String(s.id)] || '')}" placeholder="owner/repository" data-webhook-repository="${s.id}">
-                </label>
-                <button class="ghost webhook-save" onclick="saveWebhookRepository(${s.id})">Save webhook mapping</button>
+                <div class="webhook-setting">Webhook repository
+                    <code>${escapeHtml(s.webhook_repository || 'No GHCR image detected')}</code>
+                </div>
             </article>
         `).join('') : '<div class="empty">No stacks match your search. Clear the search or switch the filter to All.</div>';
     }
@@ -218,25 +217,6 @@
         const response = await fetch('/api/stack-settings', { method:'POST', headers:{'Content-Type':'application/json', 'X-CSRF-Token':csrfToken}, body:JSON.stringify({stack_id:stackId, excluded}) });
         if (!response.ok) { alert('Could not save the stack update setting.'); fetchData(); }
         else { const stack = stacks.find(s => s.id === stackId); if (stack) stack.excluded = excluded; renderStacks(); }
-    }
-
-    async function saveWebhookRepository(stackId) {
-        const input = document.querySelector(`[data-webhook-repository="${stackId}"]`);
-        const response = await fetch('/api/webhook-settings', {
-            method:'POST',
-            headers:{'Content-Type':'application/json', 'X-CSRF-Token':csrfToken},
-            body:JSON.stringify({stack_id:stackId, repository:input.value.trim()})
-        });
-        if (!response.ok) {
-            const result = await response.json().catch(() => ({}));
-            alert(result.error || 'Could not save the webhook mapping.');
-            return;
-        }
-        const result = await response.json();
-        currentData.webhook_repositories = currentData.webhook_repositories || {};
-        if (result.repository) currentData.webhook_repositories[String(stackId)] = result.repository;
-        else delete currentData.webhook_repositories[String(stackId)];
-        renderStacks();
     }
 
     async function saveSchedule() {

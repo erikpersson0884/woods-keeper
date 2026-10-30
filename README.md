@@ -115,7 +115,6 @@ API key and dashboard password.
 | `ADMIN_USERNAME` | **Yes** | *None* | Username required for HTTP Basic authentication on update requests. |
 | `ADMIN_PASSWORD` | **Yes** | *None* | Strong password required for HTTP Basic authentication on update requests. |
 | `GITHUB_WEBHOOK_SECRET` | **Yes for webhook deployments** | *None* | Secret used to verify GitHub's `X-Hub-Signature-256` header. |
-| `GITHUB_WEBHOOK_STACKS` | No | *None* | Optional initial JSON mapping of repository full names to Portainer stack IDs. Dashboard-saved mappings take over, for example `{"owner/repository":"2"}`. |
 
 `PORTAINER_URL` must use HTTPS by default. To connect to an internal Portainer
 HTTP endpoint, explicitly set:
@@ -240,9 +239,11 @@ manually requires confirmation before Portainer pulls new images.
 ### 5. `POST /api/webhooks/github`
 
 Receives a GitHub `package` or `registry_package` webhook and asynchronously redeploys the
-Portainer stack mapped to the repository when a container image is published
-or updated. Configure the mapping from the
-**GitHub repository** field on each stack card in the dashboard. The endpoint
+Portainer stack containing the matching GHCR image when a container image is
+published or updated. Woods Keeper extracts `ghcr.io/owner/repository` image
+references from each stack's Compose configuration; no manual repository
+mapping is required. The dashboard displays the detected repository on each
+stack card. The endpoint
 does not use dashboard authentication; it requires a valid
 `X-Hub-Signature-256` generated with `GITHUB_WEBHOOK_SECRET`.
 
@@ -251,7 +252,7 @@ Only the following events are accepted for deployment:
 * `X-GitHub-Event: package` or `registry_package`
 * `action` is `published` or `updated`
 * `package.package_type` is `container`
-* `repository.full_name` has been assigned to a stack in the dashboard
+* `repository.full_name` matches a `ghcr.io/owner/repository` image in a stack
 
 Configure the GitHub repository webhook as follows:
 
@@ -262,7 +263,8 @@ Configure the GitHub repository webhook as follows:
    (or **Packages** if that is the event GitHub shows for your registry).
 
 Woods Keeper does not need to know the workflow name. Any workflow or process
-that publishes or updates a container package can trigger the mapped stack.
+that publishes or updates a container package can trigger the stack containing
+the matching image.
 The package event identifies the repository, package name, and tag, then
 Portainer is asked to pull the configured stack's images. If digest-level
 verification is required, it should be added separately before deploying.

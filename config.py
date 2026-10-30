@@ -11,7 +11,6 @@ ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 SECRET_KEY = os.environ.get("SECRET_KEY")
 GITHUB_WEBHOOK_SECRET = os.environ.get("GITHUB_WEBHOOK_SECRET", "")
-GITHUB_WEBHOOK_STACKS = os.environ.get("GITHUB_WEBHOOK_STACKS", "")
 ALLOW_INSECURE_PORTAINER_HTTP = (
     os.environ.get("ALLOW_INSECURE_PORTAINER_HTTP", "").lower() == "true"
 )
