@@ -15,6 +15,9 @@ services:
       - API_KEY=${API_KEY:?Set API_KEY through your environment or a secret manager}
       - ADMIN_USERNAME=${ADMIN_USERNAME:?Set ADMIN_USERNAME through your environment}
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:?Set ADMIN_PASSWORD through your environment}
+      - GITHUB_WEBHOOK_SECRET=${GITHUB_WEBHOOK_SECRET:-}
+      - GITHUB_WEBHOOK_STACKS=${GITHUB_WEBHOOK_STACKS:-}
+      - GITHUB_WEBHOOK_WORKFLOW_NAME=${GITHUB_WEBHOOK_WORKFLOW_NAME:-}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock       # Needed to inspect/pull docker images
       - updater_data:/app/data

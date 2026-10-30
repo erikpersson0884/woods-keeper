@@ -4,6 +4,7 @@ import json
 import threading
 import base64
 import binascii
+import hmac
 import secrets
 from datetime import datetime
 from functools import wraps
@@ -15,6 +16,9 @@ from config import (
     ADMIN_PASSWORD,
     ADMIN_USERNAME,
     API_KEY,
+    GITHUB_WEBHOOK_SECRET,
+    GITHUB_WEBHOOK_STACKS,
+    GITHUB_WEBHOOK_WORKFLOW_NAME,
     PORT,
     PORTAINER_URL,
     SECRET_KEY,
@@ -193,6 +197,30 @@ def run_update_process(stack_id=None):
     is_running = False
     save_status(status_data)
 
+
+def _github_stack_mapping():
+    if not GITHUB_WEBHOOK_STACKS:
+        return {}
+    try:
+        mapping = json.loads(GITHUB_WEBHOOK_STACKS)
+    except json.JSONDecodeError:
+        return {}
+    if not isinstance(mapping, dict):
+        return {}
+    return {str(repository): str(stack_id) for repository, stack_id in mapping.items()}
+
+
+def _valid_github_signature(payload, signature):
+    if not GITHUB_WEBHOOK_SECRET or not signature.startswith("sha256="):
+        return False
+    expected = hmac.new(
+        GITHUB_WEBHOOK_SECRET.encode("utf-8"),
+        payload,
+        "sha256",
+    ).hexdigest()
+    return hmac.compare_digest(f"sha256={expected}", signature)
+
+
 @app.route("/")
 def index():
     if not is_authenticated():
@@ -249,6 +277,55 @@ def trigger_update():
     thread = threading.Thread(target=run_update_process, args=(stack_id,))
     thread.start()
     return jsonify({"message": "Update triggered successfully"})
+
+
+@app.route("/api/webhooks/github", methods=["POST"])
+def github_webhook():
+    payload = request.get_data()
+    signature = request.headers.get("X-Hub-Signature-256", "")
+    if not _valid_github_signature(payload, signature):
+        return jsonify({"error": "Invalid webhook signature"}), 401
+
+    if request.headers.get("X-GitHub-Event") != "workflow_run":
+        return jsonify({"message": "Event ignored"}), 202
+
+    try:
+        data = json.loads(payload)
+    except json.JSONDecodeError:
+        return jsonify({"error": "Invalid JSON payload"}), 400
+
+    workflow_run = data.get("workflow_run")
+    repository = data.get("repository", {}).get("full_name")
+    if (
+        data.get("action") != "completed"
+        or not isinstance(workflow_run, dict)
+        or workflow_run.get("conclusion") != "success"
+        or not repository
+        or not workflow_run.get("head_sha")
+    ):
+        return jsonify({"message": "Workflow run did not qualify for deployment"}), 202
+
+    if (
+        not GITHUB_WEBHOOK_WORKFLOW_NAME
+        or workflow_run.get("name") != GITHUB_WEBHOOK_WORKFLOW_NAME
+    ):
+        return jsonify({"message": "Workflow is not an image build workflow"}), 202
+
+    stack_id = _github_stack_mapping().get(repository)
+    if not stack_id:
+        return jsonify({"message": "Repository is not mapped to a stack"}), 202
+
+    if is_running:
+        return jsonify({"error": "Update already in progress"}), 409
+
+    thread = threading.Thread(target=run_update_process, args=(stack_id,))
+    thread.start()
+    return jsonify({
+        "message": "Stack deployment triggered",
+        "repository": repository,
+        "stack_id": stack_id,
+        "commit": workflow_run["head_sha"],
+    }), 202
 
 
 @app.route("/api/schedule", methods=["POST"])

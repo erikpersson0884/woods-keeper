@@ -23,6 +23,7 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
   * Trigger manual redeployments for individual stacks directly from the Web UI.
 * **Scheduled Updates**: Enable recurring global update checks from the dashboard header.
 * **Per-Stack Global Update Control**: Exclude selected stacks from global and scheduled updates while retaining manual updates with confirmation.
+* **GitHub Actions Deployments**: Trigger a mapped Portainer stack after a successful, signed image-build workflow.
 * **Standalone Safety**: Intelligently skips standalone containers not associated with a Docker Compose stack to prevent unexpected breakages.
 * **Live Status & Logs**: Displays real-time operation logs and execution statuses inside the browser.
 * **Raspberry Pi Support**: Docker images are built for `linux/arm64` (aarch64 Raspberry Pi OS).
@@ -113,6 +114,9 @@ API key and dashboard password.
 | `API_KEY` | **Yes** | *None* | Portainer Access Token (`ptr_...`) used for API authentication. |
 | `ADMIN_USERNAME` | **Yes** | *None* | Username required for HTTP Basic authentication on update requests. |
 | `ADMIN_PASSWORD` | **Yes** | *None* | Strong password required for HTTP Basic authentication on update requests. |
+| `GITHUB_WEBHOOK_SECRET` | **Yes for webhook deployments** | *None* | Secret used to verify GitHub's `X-Hub-Signature-256` header. |
+| `GITHUB_WEBHOOK_STACKS` | **Yes for webhook deployments** | *None* | JSON mapping of repository full names to Portainer stack IDs, for example `{"owner/repository":"2"}`. |
+| `GITHUB_WEBHOOK_WORKFLOW_NAME` | **Yes for webhook deployments** | *None* | Exact name of the successful GitHub Actions workflow allowed to deploy. |
 
 `PORTAINER_URL` must use HTTPS by default. To connect to an internal Portainer
 HTTP endpoint, explicitly set:
@@ -233,6 +237,38 @@ directly without a session CSRF token.
 Each stack can be marked **Skip global updates** in the stack list. Excluded
 stacks are skipped by global and scheduled scans. Updating an excluded stack
 manually requires confirmation before Portainer pulls new images.
+
+### 5. `POST /api/webhooks/github`
+
+Receives a GitHub `workflow_run` webhook and asynchronously redeploys the
+Portainer stack mapped to the repository. The endpoint does not use dashboard
+authentication; it requires a valid `X-Hub-Signature-256` generated with
+`GITHUB_WEBHOOK_SECRET`.
+
+Only the following events are accepted for deployment:
+
+* `X-GitHub-Event: workflow_run`
+* `action` is `completed`
+* `workflow_run.conclusion` is `success`
+* `workflow_run.name` exactly matches `GITHUB_WEBHOOK_WORKFLOW_NAME`
+* `repository.full_name` exists in `GITHUB_WEBHOOK_STACKS`
+* `workflow_run.head_sha` is present
+
+Configure the GitHub repository webhook as follows:
+
+1. Set the Payload URL to `https://your-woods-keeper-host/api/webhooks/github`.
+2. Select `application/json`.
+3. Set the same random secret as `GITHUB_WEBHOOK_SECRET`.
+4. Select **Let me select individual events**, then enable **Workflow runs**.
+5. In the image-build workflow, ensure the workflow name matches
+   `GITHUB_WEBHOOK_WORKFLOW_NAME`.
+
+GitHub's standard `workflow_run` payload does not contain the image digest.
+This endpoint therefore verifies the successful, explicitly named image-build
+workflow and its commit SHA, then asks Portainer to pull the configured stack's
+images. If digest-level verification is required, use a custom
+`repository_dispatch` contract carrying the digest and verify it against the
+registry before deploying.
 
 ---
 
