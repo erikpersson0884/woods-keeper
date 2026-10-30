@@ -9,6 +9,7 @@ import re
 import secrets
 from datetime import datetime
 from functools import wraps
+from zoneinfo import ZoneInfo
 from flask import Flask, render_template, jsonify, request, send_file, session, redirect, url_for
 import urllib.request
 import urllib.error
@@ -34,6 +35,7 @@ from storage import (
 
 app = Flask(__name__)
 app.secret_key = SECRET_KEY or secrets.token_hex(32)
+SWEDEN_TIMEZONE = ZoneInfo("Europe/Stockholm")
 
 
 def requires_admin_auth(view):
@@ -131,7 +133,9 @@ def append_log(message):
         logs = status_data.get("logs", [])
         if not isinstance(logs, list):
             logs = []
-        logs.append(f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} {message}")
+        logs.append(
+            f"{datetime.now(SWEDEN_TIMEZONE).strftime('%Y-%m-%d %H:%M:%S')} {message}"
+        )
         status_data["logs"] = logs[-1000:]
         save_status(status_data)
 
@@ -180,7 +184,9 @@ def run_update_process(stack_id=None):
         if not isinstance(logs, list):
             logs = []
         status_data["status"] = "Updating..."
-        status_data["last_run"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        status_data["last_run"] = datetime.now(SWEDEN_TIMEZONE).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         target = f"stack {stack_id}" if stack_id else "all stacks"
         logs.extend(["", f"--- update started: {status_data['last_run']} ({target}) ---"])
         status_data["logs"] = logs[-1000:]
@@ -234,7 +240,16 @@ def _stack_repositories(stack_id):
         )
         with urllib.request.urlopen(req, timeout=10) as response:
             stack_file = json.loads(response.read().decode()).get("StackFileContent", "")
-    except (urllib.error.HTTPError, urllib.error.URLError, TimeoutError, json.JSONDecodeError, UnicodeDecodeError):
+    except (
+        urllib.error.HTTPError,
+        urllib.error.URLError,
+        TimeoutError,
+        json.JSONDecodeError,
+        UnicodeDecodeError,
+    ):
+        return set()
+
+    if not isinstance(stack_file, str):
         return set()
 
     repositories = set()
@@ -253,8 +268,16 @@ def _github_stack_mapping(stacks):
         if stack_id is None:
             continue
         for repository in _stack_repositories(stack_id):
-            mappings[repository] = str(stack_id)
-    return mappings
+            stack_id = str(stack_id)
+            if repository in mappings and mappings[repository] != stack_id:
+                mappings[repository] = None
+            elif repository not in mappings:
+                mappings[repository] = stack_id
+    return {
+        repository: stack_id
+        for repository, stack_id in mappings.items()
+        if stack_id is not None
+    }
 
 
 def _valid_github_signature(payload, signature):
@@ -299,9 +322,9 @@ def api_data():
             "endpoint_id": s.get("EndpointId"),
             "status": "Active" if s.get("Status") == 1 else "Inactive",
             "excluded": str(s.get("Id")) in schedule["excluded_stack_ids"],
-            "webhook_repository": next(
-                iter(_stack_repositories(stack_id)), None
-            ) if stack_id is not None else None,
+            "webhook_repositories": sorted(
+                _stack_repositories(stack_id)
+            ) if stack_id is not None else [],
         })
 
     return jsonify({

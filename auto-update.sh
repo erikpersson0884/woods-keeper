@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep shell-generated log timestamps aligned with the dashboard.
+export TZ="${TZ:-Europe/Stockholm}"
+
 # Don't run twice at once
 exec 9>/tmp/auto-update.lock
 flock -n 9 || exit 0

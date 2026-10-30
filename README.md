@@ -23,7 +23,7 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
   * Trigger manual redeployments for individual stacks directly from the Web UI.
 * **Scheduled Updates**: Enable recurring global update checks from the dashboard header.
 * **Per-Stack Global Update Control**: Exclude selected stacks from global and scheduled updates while retaining manual updates with confirmation.
-* **GitHub Actions Deployments**: Trigger a mapped Portainer stack after a successful, signed image-build workflow.
+* **GitHub Container Deployments**: Detect GHCR repositories from stack Compose files and redeploy the matching stack after a signed image publication webhook.
 * **Standalone Safety**: Intelligently skips standalone containers not associated with a Docker Compose stack to prevent unexpected breakages.
 * **Live Status & Logs**: Displays persistent, color-coded operation logs and execution statuses inside the browser. The latest 1,000 log lines are retained.
 * **Raspberry Pi Support**: Docker images are built for `linux/arm64` (aarch64 Raspberry Pi OS).
@@ -115,6 +115,7 @@ API key and dashboard password.
 | `ADMIN_USERNAME` | **Yes** | *None* | Username required for HTTP Basic authentication on update requests. |
 | `ADMIN_PASSWORD` | **Yes** | *None* | Strong password required for HTTP Basic authentication on update requests. |
 | `GITHUB_WEBHOOK_SECRET` | **Yes for webhook deployments** | *None* | Secret used to verify GitHub's `X-Hub-Signature-256` header. |
+| `TZ` | No | `Europe/Stockholm` | Timezone used by shell-generated update logs. |
 
 `PORTAINER_URL` must use HTTPS by default. To connect to an internal Portainer
 HTTP endpoint, explicitly set:
@@ -242,9 +243,8 @@ Receives a GitHub `package` or `registry_package` webhook and asynchronously red
 Portainer stack containing the matching GHCR image when a container image is
 published or updated. Woods Keeper extracts `ghcr.io/owner/repository` image
 references from each stack's Compose configuration; no manual repository
-mapping is required. The dashboard displays the detected repository on each
-stack card. The endpoint
-does not use dashboard authentication; it requires a valid
+mapping is required. The dashboard displays detected repositories on each
+stack card. The endpoint does not use dashboard authentication; it requires a valid
 `X-Hub-Signature-256` generated with `GITHUB_WEBHOOK_SECRET`.
 
 Only the following events are accepted for deployment:

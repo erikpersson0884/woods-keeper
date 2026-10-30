@@ -164,7 +164,7 @@
                     <input type="checkbox" ${s.excluded ? 'checked' : ''} onchange="setStackExcluded(${s.id}, this.checked)"><i></i>
                 </label>
                 <div class="webhook-setting">Webhook repository
-                    <code>${escapeHtml(s.webhook_repository || 'No GHCR image detected')}</code>
+                    <code>${escapeHtml((s.webhook_repositories || []).join(', ') || 'No GHCR image detected')}</code>
                 </div>
             </article>
         `).join('') : '<div class="empty">No stacks match your search. Clear the search or switch the filter to All.</div>';
@@ -263,10 +263,17 @@
     $('hud-list').addEventListener('mouseleave', () => highlightHudStack(-1));
     $('hud-schedule-enabled').onchange = saveSchedule;
     $('hud-schedule-interval').onchange = saveSchedule;
-    setInterval(() => {
-        $('clock').innerText = new Date().toLocaleTimeString([], { hour12:false });
-    }, 1000);
-    $('clock').innerText = new Date().toLocaleTimeString([], { hour12:false });
+    const updateClock = () => {
+        $('clock').innerText = new Date().toLocaleTimeString('sv-SE', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+            timeZone: 'Europe/Stockholm'
+        });
+    };
+    setInterval(updateClock, 1000);
+    updateClock();
     applyTheme(localStorage.getItem('woods-keeper-theme') || 'light');
     applyStyle(localStorage.getItem('woods-keeper-style') || 'default');
     setInterval(fetchData, 4000);
