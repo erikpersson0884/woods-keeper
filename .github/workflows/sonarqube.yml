@@ -21,6 +21,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install test dependencies
+        run: python -m pip install --upgrade pip flask python-dotenv coverage
+
+      - name: Run tests with coverage
+        run: |
+          python -m coverage run --source=app.py,storage.py -m unittest discover -s tests
+          python -m coverage xml -o coverage.xml
+
       - name: Run SonarQube scan
         uses: SonarSource/sonarqube-scan-action@v6
         env:
@@ -28,6 +41,9 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.sources=app.py,auto-update.sh
+            -Dsonar.sources=app.py,storage.py,auto-update.sh
+            -Dsonar.tests=tests
+            -Dsonar.test.inclusions=tests/**/*.py
+            -Dsonar.python.coverage.reportPaths=coverage.xml
             -Dsonar.python.version=3.11
             -Dsonar.exclusions=**/__pycache__/**,data/**,docs/**,favicon.png
