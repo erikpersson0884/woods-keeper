@@ -7,6 +7,7 @@ import binascii
 import hmac
 import re
 import secrets
+import time
 from datetime import datetime
 from functools import wraps
 from zoneinfo import ZoneInfo
@@ -125,6 +126,30 @@ is_running = False
 schedule_lock = threading.Lock()
 schedule_wakeup = threading.Event()
 status_lock = threading.Lock()
+webhook_dedup_lock = threading.Lock()
+recent_webhooks = {}
+WEBHOOK_DEDUPLICATION_SECONDS = 10 * 60
+MAX_RECENT_WEBHOOKS = 256
+
+
+def _is_duplicate_webhook(key):
+    now = time.monotonic()
+    with webhook_dedup_lock:
+        expired_keys = [
+            recent_key
+            for recent_key, timestamp in recent_webhooks.items()
+            if now - timestamp >= WEBHOOK_DEDUPLICATION_SECONDS
+        ]
+        for expired_key in expired_keys:
+            del recent_webhooks[expired_key]
+
+        if key in recent_webhooks:
+            return True
+
+        recent_webhooks[key] = now
+        while len(recent_webhooks) > MAX_RECENT_WEBHOOKS:
+            del recent_webhooks[next(iter(recent_webhooks))]
+    return False
 
 
 def append_log(message):
@@ -384,11 +409,14 @@ def github_webhook():
     )
     package_name = package.get("name", "unknown") if isinstance(package, dict) else "unknown"
     package_type = package.get("package_type") if isinstance(package, dict) else None
+    package_type = package_type.lower() if isinstance(package_type, str) else None
     package_tag = (
         container_metadata.get("tag", "unknown")
         if isinstance(container_metadata, dict)
         else "unknown"
     )
+    if isinstance(package_tag, dict):
+        package_tag = package_tag.get("name") or package_tag.get("digest", "unknown")
     if (
         data.get("action") not in {"published", "updated"}
         or not isinstance(package, dict)
@@ -411,6 +439,13 @@ def github_webhook():
     if not stack_id:
         append_log(f"GitHub webhook ignored for {repository}: repository is not mapped to a stack")
         return jsonify({"message": "Repository is not mapped to a stack"}), 202
+
+    deduplication_key = (repository, package_name, str(package_tag))
+    if _is_duplicate_webhook(deduplication_key):
+        append_log(
+            f"GitHub webhook ignored for {repository}: duplicate package publication"
+        )
+        return jsonify({"message": "Duplicate package publication ignored"}), 202
 
     if is_running:
         append_log(f"GitHub webhook rejected for {repository}: update already in progress")

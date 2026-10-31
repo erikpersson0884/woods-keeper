@@ -266,8 +266,9 @@ Woods Keeper does not need to know the workflow name. Any workflow or process
 that publishes or updates a container package can trigger the stack containing
 the matching image.
 The package event identifies the repository, package name, and tag, then
-Portainer is asked to pull the configured stack's images. If digest-level
-verification is required, it should be added separately before deploying.
+Portainer is asked to pull the configured stack's images. Repeated deliveries
+for the same repository, package, and tag are ignored for 10 minutes to avoid
+multiple redeployments from multi-platform image builds.
 
 ---
 

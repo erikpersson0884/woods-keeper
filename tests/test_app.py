@@ -22,6 +22,8 @@ class WoodsKeeperTestCase(unittest.TestCase):
         app.ADMIN_USERNAME = "admin"
         app.ADMIN_PASSWORD = "password"
         app.is_running = False
+        with app.webhook_dedup_lock:
+            app.recent_webhooks.clear()
         self.client = app.app.test_client()
 
     def tearDown(self):
@@ -59,6 +61,15 @@ class WoodsKeeperTestCase(unittest.TestCase):
             },
         }
 
+    def github_package_payload(self):
+        payload = self.package_payload()
+        payload["package"]["package_type"] = "CONTAINER"
+        payload["package"]["package_version"]["container_metadata"]["tag"] = {
+            "name": "latest",
+            "digest": "sha256:abc123",
+        }
+        return payload
+
     def admin_headers(self):
         credentials = base64.b64encode(b"admin:password").decode()
         return {"Authorization": f"Basic {credentials}"}
@@ -80,6 +91,52 @@ class WoodsKeeperTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.get_json()["stack_id"], "7")
         update.assert_called_once_with("7")
+
+    def test_github_container_package_payload_deploys_stack(self):
+        with (
+            patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
+            patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
+            patch.object(app, "run_update_process") as update,
+        ):
+            response = self.signed_webhook(self.github_package_payload())
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.get_json()["tag"], "latest")
+        update.assert_called_once_with("7")
+
+    def test_duplicate_package_publication_does_not_redeploy(self):
+        with (
+            patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
+            patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
+            patch.object(app, "run_update_process") as update,
+        ):
+            first_response = self.signed_webhook(self.github_package_payload())
+            duplicate_response = self.signed_webhook(self.github_package_payload())
+
+        self.assertEqual(first_response.status_code, 202)
+        self.assertEqual(duplicate_response.status_code, 202)
+        self.assertEqual(
+            duplicate_response.get_json()["message"],
+            "Duplicate package publication ignored",
+        )
+        update.assert_called_once_with("7")
+
+    def test_different_package_tag_is_not_deduplicated(self):
+        first_payload = self.github_package_payload()
+        second_payload = self.github_package_payload()
+        second_payload["package"]["package_version"]["container_metadata"]["tag"] = {
+            "name": "stable",
+            "digest": "sha256:def456",
+        }
+        with (
+            patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
+            patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
+            patch.object(app, "run_update_process") as update,
+        ):
+            self.signed_webhook(first_payload)
+            self.signed_webhook(second_payload)
+
+        self.assertEqual(update.call_count, 2)
 
     def test_invalid_signature_is_rejected_and_logged(self):
         response = self.client.post(
