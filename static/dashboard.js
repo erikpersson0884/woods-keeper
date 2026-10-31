@@ -1,21 +1,21 @@
     let stacks = [], filter = 'all', query = '', currentData = {};
     let hudFilter = 'all', hudHighlight = -1, hudSegmentsBuilt = 0;
-    let logLevel = 'info';
+    let logLevel = 'normal';
     const $ = id => document.getElementById(id);
     const escapeHtml = value => String(value).replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
-    const logLevelRank = { debug: 0, info: 1, warn: 2, error: 3 };
+    const logLevelRank = { debug: 0, info: 1, normal: 2, bare: 3 };
     const getLogLevel = line => {
         const text = String(line).toLowerCase();
-        if (text.includes('error') || text.includes('failed') || text.includes('rejected')) return 'error';
-        if (text.includes('warning') || text.includes('warn') || text.includes('skipping') || text.includes('already in progress')) return 'warn';
-        if (text.includes('webhook received') || text.includes('github package')) return 'debug';
-        return 'info';
+        if (text.includes('--- update started:') || text.includes('redeploying stack') || text.includes('stack ') && text.includes(' redeployed')) return 'bare';
+        if (text.includes('webhook received') || text.includes('pull failed') || text.includes('portainer') || text.includes('execution error') || text.includes('update process') || text.includes('not found') || text.includes('no endpoint') || text.includes('already in progress')) return 'normal';
+        if (text.includes('update found') || text.includes('skipping') || text.includes('duplicate') || text.includes('not mapped') || text.includes('unsupported event') || text.includes('not a container') || text.includes('no stack-managed') || text.includes('webhook accepted')) return 'info';
+        return 'debug';
     };
     const logClass = line => {
         const text = String(line).toLowerCase();
         if (text.includes('--- update started:')) return 'log-run';
-        if (getLogLevel(line) === 'error') return 'log-error';
-        if (getLogLevel(line) === 'warn') return 'log-warn';
+        if (getLogLevel(line) === 'normal') return 'log-error';
+        if (getLogLevel(line) === 'info') return 'log-warn';
         if (text.includes('success') || text.includes('updated') || text.includes('redeploying')) return 'log-success';
         if (text.startsWith('{') || text.startsWith('}') || text.startsWith('"')) return 'log-json';
         return 'log-info';
