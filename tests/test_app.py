@@ -3,6 +3,8 @@ import hmac
 import json
 import tempfile
 import unittest
+import base64
+import urllib.error
 from pathlib import Path
 from unittest.mock import patch
 
@@ -17,6 +19,8 @@ class WoodsKeeperTestCase(unittest.TestCase):
         storage.SCHEDULE_FILE = str(Path(self.temp_dir.name) / "schedule.json")
         storage.save_status({"last_run": "Never", "status": "Idle", "logs": []})
         app.GITHUB_WEBHOOK_SECRET = "test-secret"
+        app.ADMIN_USERNAME = "admin"
+        app.ADMIN_PASSWORD = "password"
         app.is_running = False
         self.client = app.app.test_client()
 
@@ -54,6 +58,16 @@ class WoodsKeeperTestCase(unittest.TestCase):
                 },
             },
         }
+
+    def admin_headers(self):
+        credentials = base64.b64encode(b"admin:password").decode()
+        return {"Authorization": f"Basic {credentials}"}
+
+    def authenticated_client(self):
+        with self.client.session_transaction() as session:
+            session["authenticated"] = True
+            session["csrf_token"] = "csrf-token"
+        return self.client
 
     def test_valid_package_webhook_deploys_detected_stack(self):
         with (
@@ -155,6 +169,269 @@ class WoodsKeeperTestCase(unittest.TestCase):
             repositories,
             {"owner/repository", "owner/worker"},
         )
+
+    def test_authentication_is_required_for_dashboard_api(self):
+        response = self.client.get("/api/data")
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.get_json()["error"], "Authentication required")
+
+    def test_invalid_basic_auth_is_rejected(self):
+        response = self.client.get(
+            "/api/data", headers={"Authorization": "Basic not-base64"}
+        )
+
+        self.assertEqual(response.status_code, 401)
+
+    def test_index_renders_login_and_dashboard(self):
+        self.assertEqual(self.client.get("/").status_code, 200)
+        self.authenticated_client()
+        self.assertEqual(self.client.get("/").status_code, 200)
+
+    def test_favicon_is_served(self):
+        response = self.client.get("/favicon.ico")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.mimetype, "image/png")
+
+    def test_basic_auth_allows_dashboard_api(self):
+        stacks = [{
+            "Id": 7,
+            "Name": "demo",
+            "EndpointId": 1,
+            "Status": 1,
+        }]
+        with (
+            patch.object(app, "get_portainer_stacks", return_value=(stacks, None)),
+            patch.object(app, "_stack_repositories", return_value={"owner/demo"}),
+        ):
+            response = self.client.get("/api/data", headers=self.admin_headers())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["stacks"][0]["webhook_repositories"], ["owner/demo"])
+
+    def test_api_data_reports_portainer_error(self):
+        with patch.object(
+            app, "get_portainer_stacks", return_value=([], "connection failed")
+        ):
+            response = self.client.get("/api/data", headers=self.admin_headers())
+
+        self.assertFalse(response.get_json()["portainer_connected"])
+        self.assertEqual(response.get_json()["portainer_error"], "connection failed")
+
+    def test_csrf_is_required_for_update(self):
+        client = self.authenticated_client()
+
+        response = client.post("/api/update", json={})
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.get_json()["error"], "CSRF validation failed")
+
+    def test_update_route_starts_global_update(self):
+        client = self.authenticated_client()
+        with patch.object(app, "run_update_process") as update:
+            response = client.post(
+                "/api/update",
+                json={},
+                headers={"X-CSRF-Token": "csrf-token"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        update.assert_called_once_with(None)
+
+    def test_schedule_route_rejects_invalid_values(self):
+        client = self.authenticated_client()
+
+        response = client.post(
+            "/api/schedule",
+            json={"enabled": "yes", "interval": "never"},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_schedule_route_saves_valid_values(self):
+        client = self.authenticated_client()
+
+        response = client.post(
+            "/api/schedule",
+            json={"enabled": True, "interval": "15m"},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.get_json()["interval"], "15m")
+        self.assertTrue(storage.load_schedule()["enabled"])
+
+    def test_stack_settings_updates_exclusions(self):
+        client = self.authenticated_client()
+
+        response = client.post(
+            "/api/stack-settings",
+            json={"stack_id": 7, "excluded": True},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(storage.load_schedule()["excluded_stack_ids"], ["7"])
+
+        response = client.post(
+            "/api/stack-settings",
+            json={"stack_id": 7, "excluded": False},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(storage.load_schedule()["excluded_stack_ids"], [])
+
+    def test_stack_settings_rejects_invalid_values(self):
+        client = self.authenticated_client()
+        response = client.post(
+            "/api/stack-settings",
+            json={"stack_id": None, "excluded": "yes"},
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_portainer_errors_are_reported(self):
+        with patch(
+            "app.urllib.request.urlopen",
+            side_effect=urllib.error.HTTPError(
+                "url", 503, "unavailable", {}, None
+            ),
+        ):
+            stacks, error = app.get_portainer_stacks()
+
+        self.assertEqual(stacks, [])
+        self.assertEqual(error, "Portainer returned HTTP 503")
+
+    def test_invalid_stack_file_returns_no_repositories(self):
+        with patch(
+            "app.urllib.request.urlopen",
+            side_effect=urllib.error.URLError("offline"),
+        ):
+            self.assertEqual(app._stack_repositories("7"), set())
+
+    def test_unsupported_github_event_is_ignored(self):
+        response = self.signed_webhook(self.package_payload(), event="ping")
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.get_json()["message"], "Event ignored")
+
+    def test_invalid_json_webhook_is_rejected(self):
+        body = b"{invalid"
+        signature = hmac.new(
+            app.GITHUB_WEBHOOK_SECRET.encode(), body, hashlib.sha256
+        ).hexdigest()
+        response = self.client.post(
+            "/api/webhooks/github",
+            data=body,
+            headers={
+                "X-GitHub-Event": "package",
+                "X-Hub-Signature-256": f"sha256={signature}",
+            },
+        )
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_webhook_is_rejected_while_update_is_running(self):
+        app.is_running = True
+        with (
+            patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
+            patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
+        ):
+            response = self.signed_webhook(self.package_payload())
+
+        self.assertEqual(response.status_code, 409)
+
+    def test_updated_package_event_is_supported(self):
+        with (
+            patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
+            patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
+            patch.object(app, "run_update_process") as update,
+        ):
+            response = self.signed_webhook(
+                self.package_payload(action="updated")
+            )
+
+        self.assertEqual(response.status_code, 202)
+        update.assert_called_once_with("7")
+
+    def test_signature_validation_rejects_missing_secret_and_bad_prefix(self):
+        self.assertFalse(app._valid_github_signature(b"payload", ""))
+        with patch.object(app, "GITHUB_WEBHOOK_SECRET", ""):
+            self.assertFalse(
+                app._valid_github_signature(b"payload", "sha256=anything")
+            )
+
+    def test_github_mapping_ignores_unmapped_and_conflicting_stacks(self):
+        with patch.object(
+            app,
+            "_stack_repositories",
+            side_effect=[{"owner/one"}, {"owner/one"}, {"owner/two"}],
+        ):
+            mapping = app._github_stack_mapping(
+                [{"Id": 1}, {"Id": 2}, {"Name": "missing"}]
+            )
+
+        self.assertEqual(mapping, {})
+
+    def test_update_failure_is_recorded(self):
+        class Process:
+            returncode = 1
+
+            def communicate(self):
+                return "failed\n", None
+
+        with patch("app.subprocess.Popen", return_value=Process()):
+            app.run_update_process("7")
+
+        self.assertEqual(storage.load_status()["status"], "Failed")
+        self.assertIn("failed", storage.load_status()["logs"])
+
+    def test_update_process_ignores_concurrent_run(self):
+        app.is_running = True
+
+        with patch("app.subprocess.Popen") as popen:
+            app.run_update_process("7")
+
+        popen.assert_not_called()
+
+    def test_update_process_records_execution_errors(self):
+        with patch("app.subprocess.Popen", side_effect=OSError("cannot execute")):
+            app.run_update_process("7")
+
+        status = storage.load_status()
+        self.assertTrue(status["status"].startswith("Error:"))
+        self.assertIn("Execution Error: cannot execute", status["logs"])
+
+    def test_login_and_logout(self):
+        with self.client.session_transaction() as session:
+            session["csrf_token"] = "csrf-token"
+        response = self.client.post(
+            "/login",
+            data={
+                "username": "admin",
+                "password": "password",
+                "csrf_token": "csrf-token",
+            },
+        )
+        self.assertEqual(response.status_code, 302)
+
+        with self.client.session_transaction() as session:
+            self.assertTrue(session["authenticated"])
+        response = self.client.post(
+            "/logout", headers={"X-CSRF-Token": "csrf-token"}
+        )
+        self.assertEqual(response.status_code, 302)
+
+    def test_invalid_login_is_rejected(self):
+        response = self.client.post(
+            "/login",
+            data={"username": "wrong", "password": "wrong"},
+        )
+
+        self.assertEqual(response.status_code, 401)
 
     def test_update_process_preserves_existing_logs(self):
         class Process:
