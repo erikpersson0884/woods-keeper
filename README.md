@@ -3,7 +3,7 @@
 [![Build Status][build-shield]][build-url]
 [![Repo Size][repo-size-shield]][repo-size-url]
 [![Author][author-shield]][author-url]
-<!-- [![Test Coverage][coverage-shield]][coverage-url] -->
+[![Test Coverage][coverage-shield]][coverage-url]
 
 **Woods Keeper** is a lightweight, containerized management application designed to automate, monitor, and trigger updates for Docker stacks managed via **Portainer**. 
 
