@@ -60,6 +60,9 @@ select:disabled { opacity:.5; }
 .ghost:hover { border-color:var(--accent); color:var(--accent); }
 .empty { grid-column:1/-1; text-align:center; padding:28px; color:var(--muted); }
 .logs-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; }
+.log-actions { display:flex; align-items:center; gap:10px; }
+.log-actions label { color:var(--muted); font-size:12px; }
+.log-actions select { width:auto; padding:5px 8px; }
 .link { background:none; border:0; color:var(--muted); text-decoration:underline; padding:0; }
 pre { margin:0; background:var(--term); color:var(--term-ink); border-radius:10px; padding:16px; font:13px/1.7 "IBM Plex Mono", ui-monospace, monospace; max-height:260px; overflow:auto; white-space:pre-wrap; overflow-wrap:anywhere; }
 .log-line { display:block; min-height:1.7em; }

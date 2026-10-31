@@ -61,7 +61,7 @@
     </section>
 
     <section class="panel" aria-label="Execution logs">
-        <div class="logs-head"><h2>Execution logs</h2><button class="link" id="clear-logs">Clear</button></div>
+        <div class="logs-head"><h2>Execution logs</h2><div class="log-actions"><label for="log-level">Level</label><select id="log-level" data-log-level aria-label="Minimum log level"><option value="debug">Debug</option><option value="info" selected>Info</option><option value="warn">Warn</option><option value="error">Error</option></select><button class="link" id="clear-logs">Clear</button></div></div>
         <pre id="logs-container" aria-live="polite">No logs available yet.</pre>
     </section>
 </main>
@@ -130,13 +130,13 @@
     </div>
 
     <section class="hud-panel panel" aria-label="Execution logs">
-        <div class="lh"><h2>EXECUTION LOG</h2><button id="hud-clear-logs">CLEAR</button></div>
+        <div class="lh"><h2>EXECUTION LOG</h2><div class="log-actions"><label for="hud-log-level">LEVEL</label><select id="hud-log-level" data-log-level aria-label="Minimum log level"><option value="debug">DEBUG</option><option value="info" selected>INFO</option><option value="warn">WARN</option><option value="error">ERROR</option></select><button id="hud-clear-logs">CLEAR</button></div></div>
         <pre id="hud-logs" aria-live="polite"></pre>
     </section>
 </main>
     <script>
         const csrfToken = {{ csrf_token|tojson }};
     </script>
-    <script src="{{ url_for('static', filename='dashboard.js', v='20261030-3') }}"></script>
+    <script src="{{ url_for('static', filename='dashboard.js', v='20261031-4') }}"></script>
 </body>
 </html>

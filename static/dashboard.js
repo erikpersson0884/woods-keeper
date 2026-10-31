@@ -1,21 +1,35 @@
     let stacks = [], filter = 'all', query = '', currentData = {};
     let hudFilter = 'all', hudHighlight = -1, hudSegmentsBuilt = 0;
+    let logLevel = 'info';
     const $ = id => document.getElementById(id);
     const escapeHtml = value => String(value).replace(/[&<>"]/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[char]));
+    const logLevelRank = { debug: 0, info: 1, warn: 2, error: 3 };
+    const getLogLevel = line => {
+        const text = String(line).toLowerCase();
+        if (text.includes('error') || text.includes('failed') || text.includes('rejected')) return 'error';
+        if (text.includes('warning') || text.includes('warn') || text.includes('skipping') || text.includes('already in progress')) return 'warn';
+        if (text.includes('webhook received') || text.includes('github package')) return 'debug';
+        return 'info';
+    };
     const logClass = line => {
         const text = String(line).toLowerCase();
-        if (text.startsWith('---')) return 'log-run';
-        if (text.includes('error') || text.includes('failed')) return 'log-error';
-        if (text.includes('warning') || text.includes('warn') || text.includes('skipping') || text.includes('already in progress')) return 'log-warn';
+        if (text.includes('--- update started:')) return 'log-run';
+        if (getLogLevel(line) === 'error') return 'log-error';
+        if (getLogLevel(line) === 'warn') return 'log-warn';
         if (text.includes('success') || text.includes('updated') || text.includes('redeploying')) return 'log-success';
         if (text.startsWith('{') || text.startsWith('}') || text.startsWith('"')) return 'log-json';
         return 'log-info';
     };
     const renderLogs = (element, logs) => {
-        element.innerHTML = logs.length
-            ? logs.map(line => `<span class="log-line ${logClass(line)}">${escapeHtml(line)}</span>`).join('')
+        const visibleLogs = logs.filter(line => logLevelRank[getLogLevel(line)] >= logLevelRank[logLevel]);
+        element.innerHTML = visibleLogs.length
+            ? visibleLogs.map(line => `<span class="log-line ${logClass(line)}">${escapeHtml(line)}</span>`).join('')
             : '<span class="log-empty">No logs available yet.</span>';
         element.scrollTop = element.scrollHeight;
+    };
+    const renderAllLogs = () => {
+        renderLogs($('logs-container'), currentData.logs || []);
+        renderLogs($('hud-logs'), currentData.logs || []);
     };
     const intervalText = { '15m':'15 minutes', '1h':'1 hour', '6h':'6 hours', 'daily':'day' };
 
@@ -241,8 +255,7 @@
         });
         if (response.ok) {
             currentData.logs = [];
-            renderLogs($('logs-container'), []);
-            renderLogs($('hud-logs'), []);
+            renderAllLogs();
         } else {
             alert('Could not clear logs.');
         }
@@ -250,6 +263,16 @@
 
     $('clear-logs').onclick = clearLogs;
     $('hud-clear-logs').onclick = clearLogs;
+    document.querySelectorAll('[data-log-level]').forEach(select => {
+        select.value = logLevel;
+        select.onchange = event => {
+            logLevel = event.target.value;
+            document.querySelectorAll('[data-log-level]').forEach(item => {
+                item.value = logLevel;
+            });
+            renderAllLogs();
+        };
+    });
     $('hud-run-all').onclick = () => {
         if (hudHighlight >= 0 && stacks[hudHighlight]) triggerHudStackUpdate(stacks[hudHighlight]);
         else triggerUpdate();
