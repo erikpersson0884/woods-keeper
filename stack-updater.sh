@@ -4,13 +4,16 @@ set -euo pipefail
 # Keep shell-generated log timestamps aligned with the dashboard.
 export TZ="${TZ:-Europe/Stockholm}"
 
-# Don't run twice at once
-exec 9>/tmp/auto-update.lock
-flock -n 9 || exit 0
-
 log() { echo "$(date '+%F %T') $*"; }
 
 TARGET_STACK_ID="${1:-}"
+
+# Different stacks may update concurrently, but a given stack is still
+# serialized when this script is invoked independently.
+LOCK_NAME="${TARGET_STACK_ID:-global}"
+LOCK_NAME="${LOCK_NAME//[^a-zA-Z0-9_.-]/_}"
+exec 9>"/tmp/auto-update-${LOCK_NAME}.lock"
+flock -n 9 || exit 0
 
 if [[ "${PORTAINER_URL:-}" != https://* ]] \
   && { [[ "${PORTAINER_URL:-}" != http://* ]] \

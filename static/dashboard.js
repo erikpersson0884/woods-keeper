@@ -134,7 +134,7 @@
 
         document.querySelectorAll('#hud-segments .seg').forEach((segment, index) => {
             const stack = stacks[index];
-            segment.setAttribute('class', `seg ${stack.status === 'Active' ? 'run' : 'stop'}${stack.excluded ? ' skip' : ''}${currentData.is_running ? ' busy' : ''}${index === hudHighlight ? ' hl' : ''}`);
+            segment.setAttribute('class', `seg ${stack.status === 'Active' ? 'run' : 'stop'}${stack.excluded ? ' skip' : ''}${stack.updating ? ' busy' : ''}${index === hudHighlight ? ' hl' : ''}`);
         });
         const visible = stacks.map((stack, index) => [stack, index]).filter(([stack]) =>
             hudFilter === 'all' || (hudFilter === 'running') === (stack.status === 'Active')
@@ -143,7 +143,7 @@
             `<div class="mod${stack.status === 'Active' ? '' : ' stopped'}${stack.excluded ? ' skipped' : ''}${index === hudHighlight ? ' hl' : ''}" data-index="${index}">
                 <span class="led"></span><span class="n">${escapeHtml(stack.name)}</span>
                 <label class="sk switch" title="Skip global updates"><span>SKIP</span><input type="checkbox" ${stack.excluded ? 'checked' : ''} data-hud-skip="${index}" aria-label="Skip global updates for ${escapeHtml(stack.name)}"><i></i></label>
-                <button class="btn" data-hud-update="${index}" ${currentData.is_running ? 'disabled' : ''}>${currentData.is_running ? '...' : 'UPDATE'}</button>
+                <button class="btn" data-hud-update="${index}" ${stack.updating ? 'disabled' : ''}>${stack.updating ? '...' : 'UPDATE'}</button>
             </div>`
         ).join('');
         renderLogs($('hud-logs'), currentData.logs || []);
@@ -174,7 +174,7 @@
                     <h3><span class="dot"></span>${escapeHtml(s.name)}</h3>
                     <div class="state">${s.status === 'Active' ? 'Running' : 'Stopped'}</div>
                 </div>
-                <button class="ghost" onclick="triggerStackUpdate(${s.id}, ${s.excluded})" ${currentData.is_running ? 'disabled' : ''}>Update</button>
+                <button class="ghost" onclick="triggerStackUpdate(${s.id}, ${s.excluded})" ${s.updating ? 'disabled' : ''}>${s.updating ? 'Updating...' : 'Update'}</button>
                 <label class="skip switch">Skip global updates
                     <input type="checkbox" ${s.excluded ? 'checked' : ''} onchange="setStackExcluded(${s.id}, this.checked)"><i></i>
                 </label>

@@ -8,6 +8,7 @@ import hmac
 import re
 import secrets
 import time
+from collections import deque
 from datetime import datetime
 from functools import wraps
 from zoneinfo import ZoneInfo
@@ -123,6 +124,11 @@ def is_authenticated():
     )
 
 is_running = False
+update_lock = threading.Lock()
+active_stack_ids = set()
+pending_stack_ids = deque()
+pending_stack_id_set = set()
+MAX_CONCURRENT_UPDATES = 3
 schedule_lock = threading.Lock()
 schedule_wakeup = threading.Event()
 status_lock = threading.Lock()
@@ -178,7 +184,7 @@ def scheduled_update_loop():
         if schedule_wakeup.wait(timeout=interval):
             schedule_wakeup.clear()
             continue
-        run_update_process()
+        queue_global_updates()
 
 def get_portainer_stacks():
     try:
@@ -195,11 +201,98 @@ def get_portainer_stacks():
     except (json.JSONDecodeError, UnicodeDecodeError):
         return [], "Portainer returned an invalid response"
 
-def run_update_process(stack_id=None):
+def _set_running_state():
     global is_running
-    if is_running:
+    is_running = bool(active_stack_ids or pending_stack_ids)
+
+
+def _stack_is_updating(stack_id):
+    with update_lock:
+        normalized_id = str(stack_id)
+        return (
+            normalized_id in active_stack_ids
+            or normalized_id in pending_stack_id_set
+        )
+
+
+def _start_pending_updates():
+    while True:
+        with update_lock:
+            if len(active_stack_ids) >= MAX_CONCURRENT_UPDATES or not pending_stack_ids:
+                _set_running_state()
+                return
+            stack_id = pending_stack_ids.popleft()
+            pending_stack_id_set.discard(stack_id)
+            if stack_id in active_stack_ids:
+                continue
+            active_stack_ids.add(stack_id)
+            _set_running_state()
+        threading.Thread(
+            target=_run_queued_update,
+            args=(stack_id,),
+            daemon=True,
+        ).start()
+
+
+def queue_stack_update(stack_id, priority=False):
+    stack_id = str(stack_id)
+    with update_lock:
+        if stack_id in active_stack_ids:
+            if stack_id not in pending_stack_id_set:
+                if priority:
+                    pending_stack_ids.appendleft(stack_id)
+                else:
+                    pending_stack_ids.append(stack_id)
+                pending_stack_id_set.add(stack_id)
+                append_log(f"stack {stack_id} update queued")
+            _set_running_state()
+            return "queued"
+        if stack_id in pending_stack_id_set:
+            return "queued"
+        if len(active_stack_ids) < MAX_CONCURRENT_UPDATES:
+            active_stack_ids.add(stack_id)
+            _set_running_state()
+            threading.Thread(
+                target=_run_queued_update,
+                args=(stack_id,),
+                daemon=True,
+            ).start()
+            return "started"
+        if priority:
+            pending_stack_ids.appendleft(stack_id)
+        else:
+            pending_stack_ids.append(stack_id)
+        pending_stack_id_set.add(stack_id)
+        _set_running_state()
+    append_log(f"stack {stack_id} update queued")
+    return "queued"
+
+
+def _run_queued_update(stack_id):
+    try:
+        run_update_process(stack_id)
+    finally:
+        with update_lock:
+            active_stack_ids.discard(str(stack_id))
+            _set_running_state()
+        _start_pending_updates()
+
+
+def queue_global_updates():
+    stacks, portainer_error = get_portainer_stacks()
+    if portainer_error is not None:
+        append_log(f"global update could not list stacks: {portainer_error}")
         return
-    is_running = True
+    with schedule_lock:
+        excluded_stack_ids = set(load_schedule()["excluded_stack_ids"])
+    for stack in stacks:
+        stack_id = stack.get("Id")
+        if stack_id is not None and str(stack_id) not in excluded_stack_ids:
+            queue_stack_update(stack_id)
+    _start_pending_updates()
+
+
+def run_update_process(stack_id):
     output_lines = []
     final_status = "Failed"
 
@@ -212,23 +305,15 @@ def run_update_process(stack_id=None):
         status_data["last_run"] = datetime.now(SWEDEN_TIMEZONE).strftime(
             "%Y-%m-%d %H:%M:%S"
         )
-        target = f"stack {stack_id}" if stack_id else "all stacks"
+        target = f"stack {stack_id}"
         logs.extend(["", f"--- update started: {status_data['last_run']} ({target}) ---"])
         status_data["logs"] = logs[-1000:]
         save_status(status_data)
 
     try:
-        cmd = ["./auto-update.sh"]
+        cmd = ["./stack-updater.sh"]
         process_env = os.environ.copy()
-        if stack_id:
-            cmd.append(str(stack_id))
-        else:
-            with schedule_lock:
-                excluded_stack_ids = load_schedule()["excluded_stack_ids"]
-            if excluded_stack_ids:
-                process_env["EXCLUDED_STACK_IDS"] = ",".join(excluded_stack_ids)
-            else:
-                process_env.pop("EXCLUDED_STACK_IDS", None)
+        cmd.append(str(stack_id))
 
         process = subprocess.Popen(
             cmd,
@@ -246,7 +331,6 @@ def run_update_process(stack_id=None):
         output_lines.append(f"Execution Error: {str(e)}")
 
     with status_lock:
-        is_running = False
         latest_status = load_status()
         latest_logs = latest_status.get("logs", [])
         if not isinstance(latest_logs, list):
@@ -347,6 +431,7 @@ def api_data():
             "endpoint_id": s.get("EndpointId"),
             "status": "Active" if s.get("Status") == 1 else "Inactive",
             "excluded": str(s.get("Id")) in schedule["excluded_stack_ids"],
+            "updating": _stack_is_updating(stack_id),
             "webhook_repositories": sorted(
                 _stack_repositories(stack_id)
             ) if stack_id is not None else [],
@@ -367,15 +452,16 @@ def api_data():
 @requires_admin_auth
 @csrf_protected
 def trigger_update():
-    if is_running:
-        return jsonify({"message": "Update already in progress"}), 409
-    
     data = request.get_json() or {}
     stack_id = data.get("stack_id")
 
-    thread = threading.Thread(target=run_update_process, args=(stack_id,))
-    thread.start()
-    return jsonify({"message": "Update triggered successfully"})
+    if stack_id is None:
+        threading.Thread(target=queue_global_updates, daemon=True).start()
+        return jsonify({"message": "Global update queued"})
+    result = queue_stack_update(stack_id, priority=True)
+    return jsonify({
+        "message": "Update queued" if result == "queued" else "Update triggered successfully"
+    })
 
 
 @app.route("/api/webhooks/github", methods=["POST"])
@@ -447,15 +533,10 @@ def github_webhook():
         )
         return jsonify({"message": "Duplicate package publication ignored"}), 202
 
-    if is_running:
-        append_log(f"GitHub webhook rejected for {repository}: update already in progress")
-        return jsonify({"error": "Update already in progress"}), 409
-
     append_log(f"GitHub webhook accepted for {repository}; deploying stack {stack_id}")
-    thread = threading.Thread(target=run_update_process, args=(stack_id,))
-    thread.start()
+    update_status = queue_stack_update(stack_id, priority=True)
     return jsonify({
-        "message": "Stack deployment triggered",
+        "message": "Stack deployment queued" if update_status == "queued" else "Stack deployment triggered",
         "repository": repository,
         "stack_id": stack_id,
         "package": package_name,

@@ -41,7 +41,7 @@ jobs:
           SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
         with:
           args: >
-            -Dsonar.sources=app.py,storage.py,auto-update.sh
+            -Dsonar.sources=app.py,storage.py,stack-updater.sh
             -Dsonar.tests=tests
             -Dsonar.test.inclusions=tests/**/*.py
             -Dsonar.python.coverage.reportPaths=coverage.xml

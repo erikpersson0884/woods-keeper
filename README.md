@@ -7,7 +7,7 @@
 
 **Woods Keeper** is a lightweight, containerized management application designed to automate, monitor, and trigger updates for Docker stacks managed via **Portainer**. 
 
-Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides a sleek web interface for tracking stack statuses and manually initiating individual or global stack redeployments.
+Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides a web interface for tracking stack statuses and initiating individual or global stack redeployments. Python coordinates scheduling, queueing, and concurrency; the stack updater performs the Portainer redeployment.
 
 
 ![Homepage](docs/images/homepage.png)
@@ -24,6 +24,7 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
 * **Scheduled Updates**: Enable recurring global update checks from the dashboard header.
 * **Per-Stack Global Update Control**: Exclude selected stacks from global and scheduled updates while retaining manual updates with confirmation.
 * **GitHub Container Deployments**: Detect GHCR repositories from stack Compose files and redeploy the matching stack after a signed image publication webhook.
+* **Concurrent Updates**: Different stacks can update in parallel, with a maximum of three active updates. A second request for the same stack is queued and runs after the current update.
 * **Standalone Safety**: Intelligently skips standalone containers not associated with a Docker Compose stack to prevent unexpected breakages.
 * **Live Status & Logs**: Displays persistent, color-coded operation logs and execution statuses inside the browser. The latest 1,000 log lines are retained.
 * **Raspberry Pi Support**: Docker images are built for `linux/arm64` (aarch64 Raspberry Pi OS).
@@ -42,19 +43,26 @@ Built with **Python (Flask)**, **Shell scripting**, and **Docker**, it provides 
 ## 🏗️ Architecture Overview
 
 ```
-               ┌────────────────────────────────────────┐
-               │          Woods Keeper App              │
-               │  ┌──────────────┐    ┌──────────────┐  │
-               │  │   Flask UI   │    │ auto-update  │  │
-               │  │   (app.py)   │────│   (.sh)      │  │
-               │  └──────┬───────┘    └──────┬───────┘  │
-               └─────────┼───────────────────┼──────────┘
-                         │ API Requests      │ Docker Engine API
-                         ▼                   ▼
-                 ┌──────────────┐    ┌──────────────┐
-                 │  Portainer   │    │  Docker Host │
-                 │     API      │    │    Socket    │
-                 └──────────────┘    └──────────────┘
+               ┌─────────────────────────────────────────────┐
+               │             Woods Keeper App                │
+               │                                             │
+               │  ┌──────────────┐   ┌────────────────────┐  │
+               │  │ Flask UI/API │──▶│ Scheduler & queue  │  │
+               │  │   (app.py)   │   │  (max 3 workers)   │  │
+               │  └──────┬───────┘   └─────────┬──────────┘  │
+               │         │                     │             │
+               │         │                     ▼             │
+               │         │            ┌────────────────────┐ │
+               │         └───────────▶│ stack-updater.sh   │ │
+               │                      │ one stack per run  │ │
+               │                      └─────────┬──────────┘ │
+               └────────────────────────────────┼────────────┘
+                                                │ Portainer API
+                                                ▼
+                                      ┌──────────────────────┐
+                                      │      Portainer        │
+                                      │ pull image + redeploy │
+                                      └──────────────────────┘
 ```
 
 ---
@@ -131,7 +139,7 @@ the API key would be sent without transport encryption.
 ## 🔎 SonarQube Analysis
 
 The repository includes a GitHub Actions workflow at
-`.github/workflows/sonarqube.yml`. It analyzes `app.py` and `auto-update.sh`
+`.github/workflows/sonarqube.yml`. It analyzes `app.py` and `stack-updater.sh`
 on pushes to `main`, pull requests, and manual workflow runs.
 
 Configure these GitHub repository secrets before enabling the workflow:
@@ -160,7 +168,7 @@ persistent `data` volume and is disabled by default.
 ├── storage.py          # Runtime status and schedule persistence
 ├── templates/          # Login and dashboard HTML templates
 ├── static/              # Dashboard CSS and JavaScript assets
-├── auto-update.sh      # Core shell script inspecting containers & querying Docker/Portainer
+├── stack-updater.sh    # Core shell script redeploying stacks through Portainer
 ├── Dockerfile          # Multi-arch Docker container definition
 ├── data/               # Persistent data folder (holds status.json)
 └── README.md           # Documentation
@@ -214,6 +222,11 @@ authentication must not be sent over plain HTTP.
 ```
 * If `stack_id` is provided, **only** that specific stack will be redeployed.
 * If no body or an empty object `{}` is sent, a global update scan will run across all stacks.
+
+Global and scheduled scans queue eligible stacks individually rather than holding a
+single application-wide update lock. Manual and webhook-triggered stack updates take
+priority over queued global work. Each stack update invokes `stack-updater.sh <stack_id>`,
+which redeploys through Portainer with `pullImage: true`.
 
 ### 4. `POST /api/schedule`
 Updates the persistent global update schedule. This management endpoint requires

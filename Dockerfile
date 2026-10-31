@@ -11,11 +11,11 @@ WORKDIR /app
 
 RUN pip install --no-cache-dir flask python-dotenv
 
-COPY app.py config.py storage.py auto-update.sh favicon.png /app/
+COPY app.py config.py storage.py stack-updater.sh favicon.png /app/
 COPY templates /app/templates
 COPY static /app/static
 RUN mkdir -p /app/data
-RUN chmod +x /app/auto-update.sh
+RUN chmod +x /app/stack-updater.sh
 
 EXPOSE 5000
 

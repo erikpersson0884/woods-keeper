@@ -22,12 +22,20 @@ class WoodsKeeperTestCase(unittest.TestCase):
         app.ADMIN_USERNAME = "admin"
         app.ADMIN_PASSWORD = "password"
         app.is_running = False
+        with app.update_lock:
+            app.active_stack_ids.clear()
+            app.pending_stack_ids.clear()
+            app.pending_stack_id_set.clear()
         with app.webhook_dedup_lock:
             app.recent_webhooks.clear()
         self.client = app.app.test_client()
 
     def tearDown(self):
         app.is_running = False
+        with app.update_lock:
+            app.active_stack_ids.clear()
+            app.pending_stack_ids.clear()
+            app.pending_stack_id_set.clear()
         self.temp_dir.cleanup()
 
     def signed_webhook(self, payload, event="package"):
@@ -84,31 +92,31 @@ class WoodsKeeperTestCase(unittest.TestCase):
         with (
             patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
             patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
-            patch.object(app, "run_update_process") as update,
+            patch.object(app, "queue_stack_update", return_value="started") as update,
         ):
             response = self.signed_webhook(self.package_payload())
 
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.get_json()["stack_id"], "7")
-        update.assert_called_once_with("7")
+        update.assert_called_once_with("7", priority=True)
 
     def test_github_container_package_payload_deploys_stack(self):
         with (
             patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
             patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
-            patch.object(app, "run_update_process") as update,
+            patch.object(app, "queue_stack_update", return_value="started") as update,
         ):
             response = self.signed_webhook(self.github_package_payload())
 
         self.assertEqual(response.status_code, 202)
         self.assertEqual(response.get_json()["tag"], "latest")
-        update.assert_called_once_with("7")
+        update.assert_called_once_with("7", priority=True)
 
     def test_duplicate_package_publication_does_not_redeploy(self):
         with (
             patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
             patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
-            patch.object(app, "run_update_process") as update,
+            patch.object(app, "queue_stack_update", return_value="started") as update,
         ):
             first_response = self.signed_webhook(self.github_package_payload())
             duplicate_response = self.signed_webhook(self.github_package_payload())
@@ -119,7 +127,7 @@ class WoodsKeeperTestCase(unittest.TestCase):
             duplicate_response.get_json()["message"],
             "Duplicate package publication ignored",
         )
-        update.assert_called_once_with("7")
+        update.assert_called_once_with("7", priority=True)
 
     def test_different_package_tag_is_not_deduplicated(self):
         first_payload = self.github_package_payload()
@@ -131,7 +139,7 @@ class WoodsKeeperTestCase(unittest.TestCase):
         with (
             patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
             patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
-            patch.object(app, "run_update_process") as update,
+            patch.object(app, "queue_stack_update", return_value="started") as update,
         ):
             self.signed_webhook(first_payload)
             self.signed_webhook(second_payload)
@@ -286,7 +294,10 @@ class WoodsKeeperTestCase(unittest.TestCase):
 
     def test_update_route_starts_global_update(self):
         client = self.authenticated_client()
-        with patch.object(app, "run_update_process") as update:
+        with (
+            patch.object(app, "queue_global_updates") as update,
+            patch.object(app.threading.Thread, "start") as start,
+        ):
             response = client.post(
                 "/api/update",
                 json={},
@@ -294,7 +305,7 @@ class WoodsKeeperTestCase(unittest.TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        update.assert_called_once_with(None)
+        start.assert_called_once()
 
     def test_schedule_route_rejects_invalid_values(self):
         client = self.authenticated_client()
@@ -414,28 +425,30 @@ class WoodsKeeperTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
-    def test_webhook_is_rejected_while_update_is_running(self):
-        app.is_running = True
+    def test_webhook_is_queued_while_same_stack_is_running(self):
+        with app.update_lock:
+            app.active_stack_ids.add("7")
         with (
             patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
             patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
         ):
             response = self.signed_webhook(self.package_payload())
 
-        self.assertEqual(response.status_code, 409)
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.get_json()["message"], "Stack deployment queued")
 
     def test_updated_package_event_is_supported(self):
         with (
             patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),
             patch.object(app, "_stack_repositories", return_value={"owner/repository"}),
-            patch.object(app, "run_update_process") as update,
+            patch.object(app, "queue_stack_update", return_value="started") as update,
         ):
             response = self.signed_webhook(
                 self.package_payload(action="updated")
             )
 
         self.assertEqual(response.status_code, 202)
-        update.assert_called_once_with("7")
+        update.assert_called_once_with("7", priority=True)
 
     def test_signature_validation_rejects_missing_secret_and_bad_prefix(self):
         self.assertFalse(app._valid_github_signature(b"payload", ""))
@@ -469,13 +482,15 @@ class WoodsKeeperTestCase(unittest.TestCase):
         self.assertEqual(storage.load_status()["status"], "Failed")
         self.assertIn("failed", storage.load_status()["logs"])
 
-    def test_update_process_ignores_concurrent_run(self):
-        app.is_running = True
+    def test_same_stack_update_is_queued(self):
+        with app.update_lock:
+            app.active_stack_ids.add("7")
 
-        with patch("app.subprocess.Popen") as popen:
-            app.run_update_process("7")
+        with patch.object(app, "run_update_process") as update:
+            result = app.queue_stack_update("7")
 
-        popen.assert_not_called()
+        self.assertEqual(result, "queued")
+        update.assert_not_called()
 
     def test_update_process_records_execution_errors(self):
         with patch("app.subprocess.Popen", side_effect=OSError("cannot execute")):
