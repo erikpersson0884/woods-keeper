@@ -1,9 +1,9 @@
 # Woods Keeper
 [![Last Commit][last-commit-shield]][last-commit-url]
 [![Build Status][build-shield]][build-url]
+[![Test Coverage][coverage-shield]][coverage-url]
 [![Repo Size][repo-size-shield]][repo-size-url]
 [![Author][author-shield]][author-url]
-[![Test Coverage][coverage-shield]][coverage-url]
 
 **Woods Keeper** is a lightweight, containerized management application designed to automate, monitor, and trigger updates for Docker stacks managed via **Portainer**. 
 
@@ -323,7 +323,7 @@ docker run -d \
 [repo-size-shield]: https://img.shields.io/github/repo-size/erikpersson0884/woods-keeper?style=for-the-badge&cacheSeconds=60
 [repo-size-url]: https://github.com/erikpersson0884/woods-keeper
 
-[author-shield]: https://img.shields.io/badge/Author-Erik%20Persson-blue?style=for-the-badge
+[author-shield]: https://img.shields.io/badge/Author-Erik%20Persson-purple?style=for-the-badge
 [author-url]: https://github.com/erikpersson0884
 
 [build-shield]: https://img.shields.io/github/actions/workflow/status/erikpersson0884/woods-keeper/docker-build.yml?branch=main&style=for-the-badge
