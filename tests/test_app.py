@@ -350,6 +350,29 @@ class WoodsKeeperTestCase(unittest.TestCase):
 
         self.assertEqual(response.status_code, 400)
 
+    def test_clear_logs_persists_empty_log_list(self):
+        storage.save_status({
+            "last_run": "now",
+            "status": "Success",
+            "logs": ["old log"],
+        })
+        client = self.authenticated_client()
+
+        response = client.delete(
+            "/api/logs",
+            headers={"X-CSRF-Token": "csrf-token"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(storage.load_status()["logs"], [])
+
+    def test_clear_logs_requires_csrf(self):
+        client = self.authenticated_client()
+
+        response = client.delete("/api/logs")
+
+        self.assertEqual(response.status_code, 403)
+
     def test_portainer_errors_are_reported(self):
         with patch(
             "app.urllib.request.urlopen",

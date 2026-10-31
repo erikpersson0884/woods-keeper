@@ -507,6 +507,17 @@ def update_stack_settings():
     return jsonify({"stack_id": stack_id, "excluded": excluded})
 
 
+@app.route("/api/logs", methods=["DELETE"])
+@requires_admin_auth
+@csrf_protected
+def clear_logs():
+    with status_lock:
+        status_data = load_status()
+        status_data["logs"] = []
+        save_status(status_data)
+    return jsonify({"message": "Logs cleared"})
+
+
 @app.route("/login", methods=["POST"])
 def login():
     username = request.form.get("username", "")

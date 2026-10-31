@@ -15,6 +15,7 @@
         element.innerHTML = logs.length
             ? logs.map(line => `<span class="log-line ${logClass(line)}">${escapeHtml(line)}</span>`).join('')
             : '<span class="log-empty">No logs available yet.</span>';
+        element.scrollTop = element.scrollHeight;
     };
     const intervalText = { '15m':'15 minutes', '1h':'1 hour', '6h':'6 hours', 'daily':'day' };
 
@@ -233,8 +234,22 @@
         document.querySelectorAll('[data-filter]').forEach(item => item.setAttribute('aria-pressed', item === button));
         renderStacks();
     });
-    $('clear-logs').onclick = () => { $('logs-container').innerText = ''; };
-    $('hud-clear-logs').onclick = () => { $('hud-logs').innerText = ''; };
+    async function clearLogs() {
+        const response = await fetch('/api/logs', {
+            method:'DELETE',
+            headers:{'X-CSRF-Token':csrfToken}
+        });
+        if (response.ok) {
+            currentData.logs = [];
+            renderLogs($('logs-container'), []);
+            renderLogs($('hud-logs'), []);
+        } else {
+            alert('Could not clear logs.');
+        }
+    }
+
+    $('clear-logs').onclick = clearLogs;
+    $('hud-clear-logs').onclick = clearLogs;
     $('hud-run-all').onclick = () => {
         if (hudHighlight >= 0 && stacks[hudHighlight]) triggerHudStackUpdate(stacks[hudHighlight]);
         else triggerUpdate();
