@@ -15,6 +15,10 @@ button:disabled { opacity:.6; cursor:progress; }
 .theme-toggle:hover { border-color:var(--accent); color:var(--accent); }
 .style-toggle { border:1px solid var(--line); background:var(--panel); color:var(--ink); border-radius:8px; padding:7px 12px; font-weight:500; }
 .style-toggle:hover { border-color:var(--accent); color:var(--accent); }
+.theme-toggle { box-sizing:border-box; display:inline-flex; align-items:center; text-decoration:none; font:inherit; font-weight:500; }
+.hud-control { box-sizing:border-box; display:inline-flex; align-items:center; text-decoration:none; }
+.stack-card.settings-list { display:flex; flex-direction:column; gap:16px; }
+.settings-list .switch { justify-content:space-between; width:100%; }
 .header-actions { display:flex; gap:8px; align-items:center; }
 .logout { border:1px solid var(--line); background:var(--panel); color:var(--muted); border-radius:8px; padding:7px 12px; font:inherit; cursor:pointer; }
 .logout:hover { border-color:var(--accent); color:var(--accent); }

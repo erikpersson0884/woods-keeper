@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>Dashboard settings - Stack Manager</title>
+    <link rel="icon" href="/favicon.ico" type="image/png">
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body>
+<main class="default-dashboard">
+    <header class="top">
+        <div>
+            <h1>Dashboard settings</h1>
+            <div class="conn">Choose what is shown on the dashboard. Saved in this browser.</div>
+        </div>
+        <div class="header-actions">
+            <a class="theme-toggle" href="/">Back to dashboard</a>
+        </div>
+    </header>
+    <section class="stack-card settings-list">
+        <label class="switch">Show webhook repositories
+            <input type="checkbox" id="pref-webhooks" data-pref="showWebhooks" checked><i></i>
+        </label>
+        <label class="switch">Show "Skip global updates" toggle for every repo
+            <input type="checkbox" id="pref-skip" data-pref="showSkip" checked><i></i>
+        </label>
+    </section>
+</main>
+<script>
+    (function () {
+        const KEY = 'dashboardPrefs';
+        document.documentElement.dataset.theme = localStorage.getItem('woods-keeper-theme') || 'light';
+        let prefs = {};
+        try { prefs = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (error) { prefs = {}; }
+        document.querySelectorAll('[data-pref]').forEach(input => {
+            input.checked = prefs[input.dataset.pref] !== false;
+            input.addEventListener('change', () => {
+                prefs[input.dataset.pref] = input.checked;
+                localStorage.setItem(KEY, JSON.stringify(prefs));
+            });
+        });
+    })();
+</script>
+</body>
+</html>

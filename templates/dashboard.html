@@ -21,6 +21,7 @@
         <div class="header-actions">
             <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()">Dark mode</button>
             <button class="style-toggle" id="style-toggle" type="button" onclick="toggleStyle()">HUD style</button>
+            <a class="theme-toggle" href="/settings">Settings</a>
             <form method="post" action="/logout">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="logout" type="submit">Sign out</button>
@@ -75,6 +76,7 @@
             <div id="clock">--:--:--</div>
             <button class="hud-control" type="button" onclick="toggleTheme()">THEME</button>
             <button class="hud-control" type="button" onclick="toggleStyle()">DEFAULT</button>
+            <a class="hud-control" href="/settings">SETTINGS</a>
             <form method="post" action="/logout">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <button class="hud-control" type="submit">LOGOUT</button>
@@ -137,6 +139,6 @@
     <script>
         const csrfToken = {{ csrf_token|tojson }};
     </script>
-    <script src="{{ url_for('static', filename='dashboard.js', v='20261031-4') }}"></script>
+    <script src="{{ url_for('static', filename='dashboard.js', v='20261109-1') }}"></script>
 </body>
 </html>

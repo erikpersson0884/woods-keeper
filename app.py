@@ -407,6 +407,13 @@ def index():
     return render_template("dashboard.html", csrf_token=get_csrf_token())
 
 
+@app.route("/settings")
+def settings():
+    if not is_authenticated():
+        return redirect(url_for("index"))
+    return render_template("settings.html", csrf_token=get_csrf_token())
+
+
 @app.route("/favicon.ico")
 def favicon():
     favicon_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "favicon.png")

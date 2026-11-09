@@ -142,7 +142,7 @@
         $('hud-list').innerHTML = visible.map(([stack, index]) =>
             `<div class="mod${stack.status === 'Active' ? '' : ' stopped'}${stack.excluded ? ' skipped' : ''}${index === hudHighlight ? ' hl' : ''}" data-index="${index}">
                 <span class="led"></span><span class="n">${escapeHtml(stack.name)}</span>
-                <label class="sk switch" title="Skip global updates"><span>SKIP</span><input type="checkbox" ${stack.excluded ? 'checked' : ''} data-hud-skip="${index}" aria-label="Skip global updates for ${escapeHtml(stack.name)}"><i></i></label>
+                ${showPref('showSkip') ? `<label class="sk switch" title="Skip global updates"><span>SKIP</span><input type="checkbox" ${stack.excluded ? 'checked' : ''} data-hud-skip="${index}" aria-label="Skip global updates for ${escapeHtml(stack.name)}"><i></i></label>` : ''}
                 <button class="btn" data-hud-update="${index}" ${stack.updating ? 'disabled' : ''}>${stack.updating ? '...' : 'UPDATE'}</button>
             </div>`
         ).join('');
@@ -153,6 +153,15 @@
     async function triggerHudStackUpdate(stack) {
         if (stack.excluded && !confirm('This stack is excluded from global updates. Are you sure you want to update it now?')) return;
         await triggerUpdate(stack.id);
+    }
+
+    function showPref(name) {
+        try {
+            const prefs = JSON.parse(localStorage.getItem('dashboardPrefs') || '{}');
+            return prefs[name] !== false;
+        } catch (error) {
+            return true;
+        }
     }
 
     function renderHealth() {
@@ -175,12 +184,12 @@
                     <div class="state">${s.status === 'Active' ? 'Running' : 'Stopped'}</div>
                 </div>
                 <button class="ghost" onclick="triggerStackUpdate(${s.id}, ${s.excluded})" ${s.updating ? 'disabled' : ''}>${s.updating ? 'Updating...' : 'Update'}</button>
-                <label class="skip switch">Skip global updates
+                ${showPref('showSkip') ? `<label class="skip switch">Skip global updates
                     <input type="checkbox" ${s.excluded ? 'checked' : ''} onchange="setStackExcluded(${s.id}, this.checked)"><i></i>
-                </label>
-                <div class="webhook-setting">Webhook repository
+                </label>` : ''}
+                ${showPref('showWebhooks') ? `<div class="webhook-setting">Webhook repository
                     <code>${escapeHtml((s.webhook_repositories || []).join(', ') || 'No GHCR image detected')}</code>
-                </div>
+                </div>` : ''}
             </article>
         `).join('') : '<div class="empty">No stacks match your search. Clear the search or switch the filter to All.</div>';
     }
