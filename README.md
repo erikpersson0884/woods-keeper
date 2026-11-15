@@ -254,10 +254,12 @@ manually requires confirmation before Portainer pulls new images.
 
 Receives a GitHub `package` or `registry_package` webhook and asynchronously redeploys the
 Portainer stack containing the matching GHCR image when a container image is
-published or updated. Woods Keeper extracts `ghcr.io/owner/repository` image
-references from each stack's Compose configuration; no manual repository
-mapping is required. The dashboard displays detected repositories on each
-stack card. The endpoint does not use dashboard authentication; it requires a valid
+published or updated. Woods Keeper matches the GitHub repository or its
+package path against GHCR image references in each stack's Compose
+configuration; no manual repository mapping is required. This supports
+nested image paths such as `ghcr.io/owner/repository/app`. The dashboard
+displays detected repositories on each stack card. The endpoint does not use
+dashboard authentication; it requires a valid
 `X-Hub-Signature-256` generated with `GITHUB_WEBHOOK_SECRET`.
 
 Only the following events are accepted for deployment:
@@ -265,7 +267,7 @@ Only the following events are accepted for deployment:
 * `X-GitHub-Event: package` or `registry_package`
 * `action` is `published` or `updated`
 * `package.package_type` is `container`
-* `repository.full_name` matches a `ghcr.io/owner/repository` image in a stack
+* `repository.full_name` or its package path matches a GHCR image in a stack
 
 Configure the GitHub repository webhook as follows:
 

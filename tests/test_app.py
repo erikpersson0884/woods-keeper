@@ -112,6 +112,25 @@ class WoodsKeeperTestCase(unittest.TestCase):
         self.assertEqual(response.get_json()["tag"], "latest")
         update.assert_called_once_with("7", priority=True)
 
+    def test_nested_github_package_deploys_stack_with_matching_image_path(self):
+        payload = self.github_package_payload()
+        payload["repository"]["full_name"] = "erikpersson0884/overtime"
+        payload["package"]["name"] = "overtime/app"
+        with (
+            patch.object(app, "get_portainer_stacks", return_value=([{"Id": 97}], None)),
+            patch.object(
+                app,
+                "_stack_repositories",
+                return_value={"erikpersson0884/overtime/app"},
+            ),
+            patch.object(app, "queue_stack_update", return_value="started") as update,
+        ):
+            response = self.signed_webhook(payload)
+
+        self.assertEqual(response.status_code, 202)
+        self.assertEqual(response.get_json()["stack_id"], "97")
+        update.assert_called_once_with("97", priority=True)
+
     def test_duplicate_package_publication_does_not_redeploy(self):
         with (
             patch.object(app, "get_portainer_stacks", return_value=([{"Id": 7}], None)),

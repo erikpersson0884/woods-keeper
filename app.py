@@ -524,11 +524,18 @@ def github_webhook():
     )
 
     stacks, portainer_error = get_portainer_stacks()
-    stack_id = (
-        _github_stack_mapping(stacks).get(repository)
-        if portainer_error is None
-        else None
-    )
+    stack_mapping = _github_stack_mapping(stacks) if portainer_error is None else {}
+    stack_id = None
+    if isinstance(package_name, str):
+        package_path = package_name.strip("/")
+        owner, separator, _ = repository.partition("/")
+        if package_path and package_path != "unknown" and separator:
+            if not package_path.startswith(f"{owner}/"):
+                package_path = f"{owner}/{package_path}"
+            if package_path == repository or package_path.startswith(f"{repository}/"):
+                stack_id = stack_mapping.get(package_path)
+    if not stack_id:
+        stack_id = stack_mapping.get(repository)
     if not stack_id:
         append_log(f"GitHub webhook ignored for {repository}: repository is not mapped to a stack")
         return jsonify({"message": "Repository is not mapped to a stack"}), 202
