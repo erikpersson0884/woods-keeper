@@ -19,8 +19,6 @@
             <div class="conn"><span id="connection-dot" class="dot"></span><span id="portainer-status">Connecting to Portainer...</span></div>
         </div>
         <div class="header-actions">
-            <button class="theme-toggle" id="theme-toggle" type="button" onclick="toggleTheme()">Dark mode</button>
-            <button class="style-toggle" id="style-toggle" type="button" onclick="toggleStyle()">HUD style</button>
             <a class="theme-toggle" href="/settings">Settings</a>
             <form method="post" action="/logout">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -74,8 +72,6 @@
         </div>
         <div class="hud-header-actions">
             <div id="clock">--:--:--</div>
-            <button class="hud-control" type="button" onclick="toggleTheme()">THEME</button>
-            <button class="hud-control" type="button" onclick="toggleStyle()">DEFAULT</button>
             <a class="hud-control" href="/settings">SETTINGS</a>
             <form method="post" action="/logout">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
@@ -139,6 +135,7 @@
     <script>
         const csrfToken = {{ csrf_token|tojson }};
     </script>
-    <script src="{{ url_for('static', filename='dashboard.js', v='20261109-1') }}"></script>
+    <script src="{{ url_for('static', filename='appearance.js', v='20261119-1') }}"></script>
+    <script src="{{ url_for('static', filename='dashboard.js', v='20261119-1') }}"></script>
 </body>
 </html>

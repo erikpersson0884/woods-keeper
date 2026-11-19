@@ -8,17 +8,31 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 <body>
-<main class="default-dashboard">
+<main class="settings-page">
     <header class="top">
         <div>
             <h1>Dashboard settings</h1>
-            <div class="conn">Choose what is shown on the dashboard. Saved in this browser.</div>
+            <div class="conn">Choose the dashboard appearance and what is shown. Saved in this browser.</div>
         </div>
         <div class="header-actions">
             <a class="theme-toggle" href="/">Back to dashboard</a>
         </div>
     </header>
     <section class="stack-card settings-list">
+        <h2>Appearance</h2>
+        <label class="setting-row" for="theme-select">Color theme
+            <select id="theme-select">
+                <option value="light">Light</option>
+                <option value="dark">Dark</option>
+            </select>
+        </label>
+        <label class="setting-row" for="style-select">Dashboard style
+            <select id="style-select">
+                <option value="default">Default</option>
+                <option value="hud">HUD</option>
+            </select>
+        </label>
+        <h2>Dashboard content</h2>
         <label class="switch">Show webhook repositories
             <input type="checkbox" id="pref-webhooks" data-pref="showWebhooks" checked><i></i>
         </label>
@@ -27,10 +41,10 @@
         </label>
     </section>
 </main>
+<script src="{{ url_for('static', filename='appearance.js', v='20261119-1') }}"></script>
 <script>
     (function () {
         const KEY = 'dashboardPrefs';
-        document.documentElement.dataset.theme = localStorage.getItem('woods-keeper-theme') || 'light';
         let prefs = {};
         try { prefs = JSON.parse(localStorage.getItem(KEY) || '{}'); } catch (error) { prefs = {}; }
         document.querySelectorAll('[data-pref]').forEach(input => {

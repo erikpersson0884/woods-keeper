@@ -33,26 +33,6 @@
     };
     const intervalText = { '15m':'15 minutes', '1h':'1 hour', '6h':'6 hours', 'daily':'day' };
 
-    function applyTheme(theme) {
-        document.documentElement.dataset.theme = theme;
-        localStorage.setItem('woods-keeper-theme', theme);
-        $('theme-toggle').innerText = theme === 'dark' ? 'Light mode' : 'Dark mode';
-    }
-
-    function toggleTheme() {
-        applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark');
-    }
-
-    function applyStyle(style) {
-        document.documentElement.dataset.style = style;
-        localStorage.setItem('woods-keeper-style', style);
-        $('style-toggle').innerText = style === 'hud' ? 'Default style' : 'HUD style';
-    }
-
-    function toggleStyle() {
-        applyStyle(document.documentElement.dataset.style === 'hud' ? 'default' : 'hud');
-    }
-
     function hudArc(radius, start, end) {
         const point = angle => [
             200 + radius * Math.cos(angle * Math.PI / 180),
@@ -321,7 +301,5 @@
     };
     setInterval(updateClock, 1000);
     updateClock();
-    applyTheme(localStorage.getItem('woods-keeper-theme') || 'light');
-    applyStyle(localStorage.getItem('woods-keeper-style') || 'default');
     setInterval(fetchData, 4000);
     fetchData();

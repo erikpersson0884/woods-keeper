@@ -19,6 +19,12 @@ button:disabled { opacity:.6; cursor:progress; }
 .hud-control { box-sizing:border-box; display:inline-flex; align-items:center; text-decoration:none; }
 .stack-card.settings-list { display:flex; flex-direction:column; gap:16px; }
 .settings-list .switch { justify-content:space-between; width:100%; }
+.settings-list h2,
+.settings-list .setting-row,
+.settings-list .switch { text-align:left; }
+.settings-list .setting-row { display:flex; justify-content:space-between; align-items:center; gap:16px; width:100%; }
+.settings-list .setting-row select { min-width:150px; margin-left:auto; }
+.settings-page .settings-list h2:not(:first-child) { margin-top:8px; }
 .header-actions { display:flex; gap:8px; align-items:center; }
 .logout { border:1px solid var(--line); background:var(--panel); color:var(--muted); border-radius:8px; padding:7px 12px; font:inherit; cursor:pointer; }
 .logout:hover { border-color:var(--accent); color:var(--accent); }
@@ -183,6 +189,7 @@ pre { margin:0; background:var(--term); color:var(--term-ink); border-radius:10p
     --hud-red:#ff4d5e; --hud-grid:rgba(56,232,255,.06);
 }
 :root[data-style="hud"] .default-dashboard { display:none; }
+:root[data-style="hud"] .settings-page { display:grid; }
 :root[data-style="hud"] .hud-dashboard {
     display:grid; position:relative; z-index:1; max-width:1280px;
     padding:20px 18px 40px; gap:16px; font:500 16px/1.4 Rajdhani,system-ui,sans-serif;
